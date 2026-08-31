@@ -1,0 +1,254 @@
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;500;600&display=swap');
+@import 'tailwindcss';
+
+@theme inline {
+  --color-background: var(--background);
+  --color-foreground: var(--foreground);
+  --color-card: var(--card);
+  --color-card-foreground: var(--card-foreground);
+  --color-primary: var(--primary);
+  --color-primary-foreground: var(--primary-foreground);
+  --color-secondary: var(--secondary);
+  --color-secondary-foreground: var(--secondary-foreground);
+  --color-muted: var(--muted);
+  --color-muted-foreground: var(--muted-foreground);
+  --color-accent: var(--accent);
+  --color-accent-foreground: var(--accent-foreground);
+  --color-border: var(--border);
+  --color-ring: var(--ring);
+  --radius-sm: calc(var(--radius) - 4px);
+  --radius-md: calc(var(--radius) - 2px);
+  --radius-lg: var(--radius);
+  --radius-xl: calc(var(--radius) + 4px);
+}
+
+:root {
+  --background: #eef0f5;
+  --foreground: #1a1a2e;
+  --card: #ffffff;
+  --card-foreground: #1a1a2e;
+  --primary: #3b35c4;
+  --primary-foreground: #ffffff;
+  --secondary: #f0f0f8;
+  --secondary-foreground: #3b35c4;
+  --muted: #e8e8f0;
+  --muted-foreground: #7c7c99;
+  --accent: #3b35c4;
+  --accent-foreground: #ffffff;
+  --border: #e0e0ec;
+  --ring: #3b35c4;
+  --radius: 16px;
+  --safe-top: env(safe-area-inset-top, 0px);
+  --safe-bottom: env(safe-area-inset-bottom, 0px);
+  --safe-left: env(safe-area-inset-left, 0px);
+  --safe-right: env(safe-area-inset-right, 0px);
+  --app-pad-x: clamp(0.75rem, 3.5vw, 1.25rem);
+  --touch-min: 44px;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+html,
+body,
+#root {
+  height: 100%;
+  width: 100%;
+}
+
+html {
+  -webkit-text-size-adjust: 100%;
+  text-size-adjust: 100%;
+}
+
+body {
+  font-family: 'Inter', sans-serif;
+  background: var(--background);
+  color: var(--foreground);
+  margin: 0;
+  padding: 0;
+  -webkit-font-smoothing: antialiased;
+  overscroll-behavior: none;
+  touch-action: manipulation;
+}
+
+button,
+input,
+textarea {
+  font: inherit;
+  -webkit-tap-highlight-color: transparent;
+}
+
+/* Hide scrollbars by default */
+::-webkit-scrollbar { width: 0; height: 0; }
+* { scrollbar-width: none; }
+
+@keyframes pulse {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.45; }
+}
+
+@keyframes scanline {
+  0% { top: 12%; }
+  50% { top: 78%; }
+  100% { top: 12%; }
+}
+
+@keyframes hero-scan-glow {
+  0% {
+    top: 18%;
+    opacity: 0.35;
+  }
+  50% {
+    top: 72%;
+    opacity: 1;
+  }
+  100% {
+    top: 18%;
+    opacity: 0.35;
+  }
+}
+
+@keyframes qty-hero-pulse {
+  0%,
+  100% {
+    transform: scale(1);
+    box-shadow: 0 0 0 0 rgba(59, 53, 196, 0.35);
+  }
+  50% {
+    transform: scale(1.04);
+    box-shadow: 0 0 0 12px rgba(59, 53, 196, 0);
+  }
+}
+
+@keyframes success-hero-pop {
+  0% {
+    transform: scale(0.6);
+    opacity: 0;
+  }
+  60% {
+    transform: scale(1.08);
+    opacity: 1;
+  }
+  100% {
+    transform: scale(1);
+    opacity: 1;
+  }
+}
+
+@keyframes step-verify-pop {
+  0% {
+    transform: scale(0.55);
+    opacity: 0.4;
+  }
+  60% {
+    transform: scale(1.12);
+    opacity: 1;
+  }
+  100% {
+    transform: scale(1);
+    opacity: 1;
+  }
+}
+
+@keyframes step-pulse-ring {
+  0% {
+    box-shadow: 0 0 0 0 rgba(59, 53, 196, 0.45);
+  }
+  70% {
+    box-shadow: 0 0 0 10px rgba(59, 53, 196, 0);
+  }
+  100% {
+    box-shadow: 0 0 0 0 rgba(59, 53, 196, 0);
+  }
+}
+
+@keyframes step-scan-spin {
+  0% {
+    transform: rotate(0deg);
+  }
+  100% {
+    transform: rotate(360deg);
+  }
+}
+
+@keyframes step-fail-shake {
+  0%,
+  100% {
+    transform: translateX(0);
+  }
+  25% {
+    transform: translateX(-2px);
+  }
+  75% {
+    transform: translateX(2px);
+  }
+}
+
+@keyframes step-icon-breathe {
+  0%,
+  100% {
+    transform: scale(1);
+    opacity: 1;
+  }
+  50% {
+    transform: scale(1.08);
+    opacity: 0.85;
+  }
+}
+
+.step-glyph-verified {
+  animation: step-verify-pop 0.45s cubic-bezier(0.34, 1.4, 0.64, 1) both;
+}
+
+.step-glyph-active {
+  animation: step-pulse-ring 1.6s ease-out infinite;
+}
+
+.step-glyph-scanning {
+  animation: step-pulse-ring 1.2s ease-out infinite;
+}
+
+.step-glyph-failed {
+  animation: step-fail-shake 0.4s ease-in-out 2;
+}
+
+.step-field-icon-active {
+  animation: step-icon-breathe 1.4s ease-in-out infinite;
+}
+
+.step-scan-arc {
+  transform-origin: center;
+  animation: step-scan-spin 1.8s linear infinite;
+}
+
+.hero-scan-beam {
+  position: absolute;
+  left: 12%;
+  right: 12%;
+  height: 3px;
+  border-radius: 999px;
+  background: linear-gradient(
+    90deg,
+    transparent,
+    #5b8cff 20%,
+    #8eb6ff 50%,
+    #5b8cff 80%,
+    transparent
+  );
+  box-shadow:
+    0 0 10px 2px rgba(91, 140, 255, 0.85),
+    0 0 22px 4px rgba(59, 53, 196, 0.45);
+  animation: hero-scan-glow 2s ease-in-out infinite;
+  pointer-events: none;
+  z-index: 2;
+}
+
+.hero-qty-pulse {
+  animation: qty-hero-pulse 1.8s ease-in-out infinite;
+}
+
+.hero-success-pop {
+  animation: success-hero-pop 0.55s cubic-bezier(0.34, 1.4, 0.64, 1) both;
+}
