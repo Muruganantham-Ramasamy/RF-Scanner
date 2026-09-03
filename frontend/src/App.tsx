@@ -1696,8 +1696,8 @@ function RfVerifyScanScreen({
 
 // ─── Screen: Login ────────────────────────────────────────────────────────────
 function LoginScreen({ onLogin }: { onLogin: () => void }) {
-  const [warehouse, setWarehouse] = useState("WH01");
-  const [resource, setResource] = useState("Muruga");
+  const [warehouse, setWarehouse] = useState("");
+  const [resource, setResource] = useState("");
   const [password, setPassword] = useState("");
   const [error, setError] = useState<string | null>(null);
 
