@@ -134,7 +134,7 @@ describe("PickingWorkflowService — sequential verification", () => {
     expect(result.state.verified).toEqual(["wo", "source"]);
   });
 
-  it("15. Existing E2E happy path continues passing", () => {
+  it("14. Existing E2E happy path continues passing", () => {
     let state = createInitialPickingState();
     const values = [
       "200028",

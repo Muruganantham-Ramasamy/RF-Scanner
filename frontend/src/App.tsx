@@ -1,9 +1,15 @@
-import { useEffect, useRef, useState, type ReactNode } from "react";
+import {
+  createContext,
+  useContext,
+  useEffect,
+  useRef,
+  useState,
+  type ReactNode,
+} from "react";
 import {
   CAMERA_ACTIVE_STATUS,
   PICKING_COMPLETE_UI,
   PICKING_UI_TERMS,
-  RF_DOCUMENT_FIELDS,
   UOM_UI,
   VERIFICATION_SUMMARY_UI,
   expectedValueLabel,
@@ -14,7 +20,6 @@ import {
 import {
   DEMO_PICK,
   EXPECTED_BY_STEP,
-  PICKING_STEP_ORDER,
   cancelCameraScan,
   clearStepFailure,
   createInitialPickingState,
@@ -25,24 +30,56 @@ import {
   type PickingStepId,
   type PickingWorkflowState,
 } from "./picking/pickingWorkflowService";
+import {
+  PICKING_METHODS,
+  getActivePickingDocument,
+  getConsolidatedPickingDetailRows,
+  getPickingMethodMeta,
+  type PickingMethodId,
+} from "./picking/pickingDataSource";
 import { startLiveBarcodeDetection } from "./picking/cameraBarcodeDetector";
 import { safeBarcodeScanner, createSafeScanSession } from "./picking/safeBarcodeScanner";
 import { getScanContext, shouldAutoStartCamera } from "./picking/scanContext";
 import { WarehouseOrderEntryController } from "./picking/warehouseOrderEntry";
 import {
   GoodsReceiptScreen,
-  InboundHubScreen,
   ReceivingExecutionScreen,
   ScanPurchaseOrderScreen,
   type ReceivingSharedUi,
 } from "./receiving/ReceivingScreens";
 
+type NavTab = "home" | "scan" | "activity" | "profile";
+
+type AppChromeValue = {
+  navigateTab: (tab: NavTab) => void;
+  logout: () => void;
+  goProfile: () => void;
+};
+
+const AppChromeContext = createContext<AppChromeValue | null>(null);
+
+function useAppChrome(): AppChromeValue {
+  const ctx = useContext(AppChromeContext);
+  if (!ctx) {
+    return {
+      navigateTab: () => {},
+      logout: () => {},
+      goProfile: () => {},
+    };
+  }
+  return ctx;
+}
+
 // ─── Types ────────────────────────────────────────────────────────────────────
 type Screen =
   | "login"
   | "home"
-  | "outbound"
+  | "production"
   | "inbound"
+  | "outbound"
+  | "physical-inventory"
+  | "internal"
+  | "wo-selection"
   | "scan-po"
   | "receiving-execution"
   | "goods-receipt"
@@ -59,13 +96,28 @@ type Screen =
   | "activity"
   | "profile";
 
-type PickingMethod =
-  | "system-guided"
-  | "queue"
-  | "by-wr"
-  | "by-wo"
-  | "by-hu"
-  | null;
+type ModuleHubScreen =
+  | "production"
+  | "inbound"
+  | "outbound"
+  | "physical-inventory"
+  | "internal"
+  | "wo-selection";
+
+const MODULE_HUB_CONFIG: Record<ModuleHubScreen, { title: string; subtitle: string }> = {
+  production: { title: "Production Processes", subtitle: "Select an operation" },
+  inbound: { title: "Inbound Processes", subtitle: "Select an operation" },
+  outbound: { title: "Outbound Processes", subtitle: "Select an operation" },
+  "physical-inventory": { title: "Physical Inventory", subtitle: "Select an operation" },
+  internal: { title: "Internal Processes", subtitle: "Select an operation" },
+  "wo-selection": { title: "WO Selection", subtitle: "Select an operation" },
+};
+
+function isModuleHubScreen(screen: Screen): screen is ModuleHubScreen {
+  return screen in MODULE_HUB_CONFIG;
+}
+
+type PickingMethod = PickingMethodId;
 
 // ─── Icons ────────────────────────────────────────────────────────────────────
 function IconHome({ active }: { active?: boolean }) {
@@ -297,7 +349,7 @@ function IconClock() {
     <svg width="12" height="12" viewBox="0 0 24 24" fill="none" aria-hidden>
       <circle cx="12" cy="12" r="9" stroke="#9898b8" strokeWidth="2" />
       <path d="M12 7v5l3 2" stroke="#9898b8" strokeWidth="2" strokeLinecap="round" />
-    </svg>
+        </svg>
   );
 }
 
@@ -521,13 +573,19 @@ function TopBar({
   onBack,
   onLogout,
   showBack = false,
+  compact = false,
 }: {
   title: string;
   subtitle: string;
   onBack?: () => void;
   onLogout?: () => void;
   showBack?: boolean;
+  /** Slightly tighter padding for dense RF screens (e.g. Picking Details). */
+  compact?: boolean;
 }) {
+  const chrome = useAppChrome();
+  const handleLogout = onLogout ?? chrome.logout;
+
   return (
     <div
       style={{
@@ -536,7 +594,7 @@ function TopBar({
         paddingLeft: "var(--app-pad-x)",
         paddingRight: "var(--app-pad-x)",
       }}
-      className="pb-4 sm:pb-5 shrink-0"
+      className={compact ? "pb-2.5 shrink-0" : "pb-4 sm:pb-5 shrink-0"}
     >
       <div className="flex items-center justify-between gap-2">
         <div className="flex items-center gap-2 sm:gap-3 min-w-0 flex-1">
@@ -544,7 +602,7 @@ function TopBar({
             <button
               onClick={onBack}
               aria-label="Go back"
-              className="rounded-full flex items-center justify-center shrink-0"
+              className="rounded-full flex items-center justify-center shrink-0 active:opacity-80"
               style={{
                 background: "rgba(255,255,255,0.18)",
                 width: "var(--touch-min)",
@@ -556,21 +614,30 @@ function TopBar({
           ) : (
             <div className="shrink-0" style={{ width: "var(--touch-min)" }} />
           )}
-          <span className="text-white text-lg sm:text-xl font-bold tracking-tight truncate">
+          <span
+            className={
+              compact
+                ? "text-white text-base sm:text-lg font-bold tracking-tight truncate"
+                : "text-white text-lg sm:text-xl font-bold tracking-tight truncate"
+            }
+          >
             {title}
           </span>
         </div>
         <div className="flex items-center gap-2 shrink-0">
-          <div
-            className="rounded-full flex items-center justify-center text-white font-bold text-sm"
+          <button
+            type="button"
+            aria-label="Open profile"
+            onClick={chrome.goProfile}
+            className="rounded-full flex items-center justify-center text-white font-bold text-sm active:opacity-80"
             style={{ background: "#2e2e38", width: "var(--touch-min)", height: "var(--touch-min)" }}
           >
             M
-          </div>
+          </button>
           <button
             aria-label="Log out"
-            onClick={onLogout}
-            className="rounded-full flex items-center justify-center"
+            onClick={handleLogout}
+            className="rounded-full flex items-center justify-center active:opacity-80"
             style={{
               background: "rgba(255,255,255,0.18)",
               width: "var(--touch-min)",
@@ -582,7 +649,11 @@ function TopBar({
         </div>
       </div>
       <p
-        className="text-gray-400 text-xs sm:text-sm mt-1 truncate"
+        className={
+          compact
+            ? "text-gray-400 text-[11px] sm:text-xs mt-0.5 truncate"
+            : "text-gray-400 text-xs sm:text-sm mt-1 truncate"
+        }
         style={{ marginLeft: showBack ? "calc(var(--touch-min) + 0.5rem)" : 0 }}
       >
         {subtitle}
@@ -595,15 +666,24 @@ function BottomNav({
   active,
   onNavigate,
 }: {
-  active: "home" | "scan" | "activity" | "profile";
-  onNavigate: (tab: "home" | "scan" | "activity" | "profile") => void;
+  active: NavTab;
+  onNavigate?: (tab: NavTab) => void;
 }) {
+  const chrome = useAppChrome();
   const tabs = [
     { key: "home" as const, label: "Home", Icon: IconHome },
     { key: "scan" as const, label: "Scan", Icon: IconScan },
     { key: "activity" as const, label: "Activity", Icon: IconActivity },
     { key: "profile" as const, label: "Profile", Icon: IconProfile },
   ];
+
+  function handleTab(tab: NavTab) {
+    if (onNavigate) {
+      onNavigate(tab);
+      return;
+    }
+    chrome.navigateTab(tab);
+  }
 
   return (
     <nav
@@ -621,9 +701,10 @@ function BottomNav({
       {tabs.map(({ key, label, Icon }) => (
         <button
           key={key}
-          onClick={() => onNavigate(key)}
-          className="flex flex-1 flex-col items-center justify-center gap-0.5 min-w-0 py-1"
+          onClick={() => handleTab(key)}
+          className="flex flex-1 flex-col items-center justify-center gap-0.5 min-w-0 py-1 active:opacity-80"
           style={{ minHeight: "var(--touch-min)" }}
+          aria-current={active === key ? "page" : undefined}
         >
           <Icon active={active === key} />
           <span
@@ -679,12 +760,15 @@ function WorkflowProgress({
   current,
   complete = false,
   verified = [],
+  stepOrder,
 }: {
   current: VerifyStepId;
   complete?: boolean;
   verified?: readonly PickingStepId[];
+  /** When provided, only required verification steps are shown. */
+  stepOrder?: readonly PickingStepId[];
 }) {
-  const steps: { id: VerifyStepId; label: string }[] = [
+  const allSteps: { id: VerifyStepId; label: string }[] = [
     { id: "wo", label: PICKING_UI_TERMS.wo.shortLabel },
     { id: "source", label: PICKING_UI_TERMS.source.shortLabel },
     { id: "product", label: PICKING_UI_TERMS.product.shortLabel },
@@ -692,6 +776,9 @@ function WorkflowProgress({
     { id: "quantity", label: PICKING_UI_TERMS.quantity.shortLabel },
     { id: "destination", label: PICKING_UI_TERMS.destination.shortLabel },
   ];
+  const steps = stepOrder
+    ? stepOrder.map((id) => allSteps.find((s) => s.id === id)!).filter(Boolean)
+    : allSteps;
   const currentIndex = steps.findIndex((s) => s.id === current);
 
   return (
@@ -1164,14 +1251,14 @@ function CameraScanOverlay({
         <div className="bg-white rounded-2xl p-4 sm:p-5 shadow-sm space-y-3">
           <div className="flex items-start gap-3">
             <IconWarning />
-            <div>
+          <div>
               <p className="text-sm font-extrabold" style={{ color: "#1a1a2e" }}>
                 Camera unavailable
               </p>
               <p className="text-xs mt-1" style={{ color: "#7c7c99" }}>
                 {cameraHint}
               </p>
-            </div>
+          </div>
           </div>
           <button
             type="button"
@@ -1221,7 +1308,7 @@ function CameraScanOverlay({
             >
               {expectedValue}
             </p>
-          </div>
+            </div>
         ) : null}
         <div className={fillAvailable ? "flex-1 min-h-0" : undefined}>{videoFrame}</div>
         <p
@@ -1237,7 +1324,7 @@ function CameraScanOverlay({
         <p className="text-center text-[11px] shrink-0" style={{ color: "#9898b8" }}>
           Can&apos;t scan?
         </p>
-        <button
+            <button
           type="button"
           onClick={() => {
             stopCamera();
@@ -1248,8 +1335,8 @@ function CameraScanOverlay({
           style={{ background: "#f4f4f8", color: "#3b35c4", minHeight: "var(--touch-min)" }}
         >
           Enter Manually
-        </button>
-      </div>
+            </button>
+          </div>
     );
   }
 
@@ -1266,10 +1353,10 @@ function CameraScanOverlay({
             style={{ background: "#fffbeb" }}
           >
             <IconWarning />
-          </div>
+        </div>
           <h2 className="text-white text-xl font-extrabold text-center">Camera unavailable</h2>
           <p className="text-gray-400 text-sm text-center leading-relaxed">{cameraHint}</p>
-        </div>
+      </div>
         <div
           className="shrink-0 space-y-2"
           style={{
@@ -1450,7 +1537,7 @@ function RfVerifyScanScreen({
       <ScrollBody className="space-y-3">
         <WorkflowProgress current={progressStep} />
 
-        <div>
+            <div>
           <h2 className="text-lg sm:text-xl font-extrabold" style={{ color: "#1a1a2e" }}>
             {heading}
           </h2>
@@ -1526,9 +1613,9 @@ function RfVerifyScanScreen({
               <div className="flex-1 h-px" style={{ background: "#e0e0ec" }} />
               <span className="text-[10px] sm:text-xs font-bold tracking-widest shrink-0" style={{ color: "#b0b0cc" }}>
                 OR MANUAL ENTRY
-              </span>
+                </span>
               <div className="flex-1 h-px" style={{ background: "#e0e0ec" }} />
-            </div>
+              </div>
 
             <div>
               <label className="text-xs sm:text-sm font-semibold block mb-2" style={{ color: "#1a1a2e" }}>
@@ -1551,7 +1638,7 @@ function RfVerifyScanScreen({
                   style={{ color: "#1a1a2e", fontFamily: "'JetBrains Mono', monospace" }}
                   placeholder={placeholder}
                 />
-              </div>
+            </div>
             </div>
 
             <button
@@ -1586,7 +1673,7 @@ function RfVerifyScanScreen({
         </button>
       </ScrollBody>
 
-      <BottomNav active="scan" onNavigate={(tab) => tab === "home" && onBack()} />
+      <BottomNav active="scan" />
 
       {scanning && (
         <CameraScanOverlay
@@ -1626,139 +1713,151 @@ function LoginScreen({ onLogin }: { onLogin: () => void }) {
   return (
     <ScreenShell>
       <div
+        className="flex-1 min-h-0 flex flex-col"
         style={{
-          background: "#1a1a22",
-          paddingTop: "max(1.25rem, var(--safe-top))",
-          paddingLeft: "var(--app-pad-x)",
-          paddingRight: "var(--app-pad-x)",
+          background: "linear-gradient(180deg, #1a1a22 0%, #1a1a22 22%, #eef0f5 22%, #eef0f5 100%)",
         }}
-        className="pb-8 sm:pb-10 shrink-0"
       >
-        <p className="text-gray-400 text-xs sm:text-sm font-semibold tracking-widest uppercase">
-          RF Terminal Client
-        </p>
-        <h1 className="text-white text-2xl sm:text-3xl font-extrabold tracking-tight mt-1">
-          Warehouse RF
-        </h1>
-        <p className="text-gray-400 text-xs sm:text-sm mt-2">
-          Sign in to start warehouse picking
-        </p>
-      </div>
-
-      <ScrollBody className="-mt-4 sm:-mt-5 space-y-3">
-        <div className="bg-white rounded-2xl p-4 sm:p-5 shadow-sm space-y-4">
-          <div>
-            <h2 className="text-lg sm:text-xl font-extrabold" style={{ color: "#1a1a2e" }}>
-              Login
-            </h2>
-            <p className="text-xs sm:text-sm mt-1" style={{ color: "#7c7c99" }}>
-              Enter your warehouse and resource to continue.
-            </p>
-          </div>
-
-          <div>
-            <label className="text-xs sm:text-sm font-semibold block mb-2" style={{ color: "#1a1a2e" }}>
-              Warehouse
-            </label>
+        <div
+          className="flex-1 min-h-0 flex flex-col justify-center"
+          style={{
+            paddingLeft: "var(--app-pad-x)",
+            paddingRight: "var(--app-pad-x)",
+            paddingTop: "max(1rem, var(--safe-top))",
+            paddingBottom: "max(1.5rem, var(--safe-bottom))",
+          }}
+        >
+          <div className="login-card-enter bg-white rounded-2xl shadow-sm overflow-hidden">
             <div
-              className="flex items-center gap-3 rounded-xl px-3 sm:px-4 py-3"
-              style={{ border: "1.5px solid #e0e0ec", minHeight: "var(--touch-min)", background: "#fafafa" }}
-            >
-              <IconHash />
-              <input
-                type="text"
-                value={warehouse}
-                onChange={(e) => {
-                  setWarehouse(e.target.value);
-                  setError(null);
-                }}
-                className="flex-1 outline-none text-base font-semibold bg-transparent min-w-0"
-                style={{ color: "#1a1a2e", fontFamily: "'JetBrains Mono', monospace" }}
-                placeholder="e.g. WH01"
-                autoComplete="organization"
-              />
-            </div>
-          </div>
+              className="h-1.5 w-full"
+              style={{
+                background: "linear-gradient(90deg, #3b35c4 0%, #6366f1 50%, #3b35c4 100%)",
+              }}
+            />
 
-          <div>
-            <label className="text-xs sm:text-sm font-semibold block mb-2" style={{ color: "#1a1a2e" }}>
-              Resource
-            </label>
+            <div className="p-5 sm:p-6 space-y-4">
+              <div className="flex flex-col items-center text-center gap-3 pb-1">
             <div
-              className="flex items-center gap-3 rounded-xl px-3 sm:px-4 py-3"
-              style={{ border: "1.5px solid #e0e0ec", minHeight: "var(--touch-min)", background: "#fafafa" }}
+              className="w-14 h-14 rounded-2xl flex items-center justify-center"
+              style={{ background: "#eeeeff" }}
             >
-              <IconProfile active />
-              <input
-                type="text"
-                value={resource}
-                onChange={(e) => {
-                  setResource(e.target.value);
-                  setError(null);
-                }}
-                className="flex-1 outline-none text-base font-semibold bg-transparent min-w-0"
-                style={{ color: "#1a1a2e" }}
-                placeholder="Resource / user"
-                autoComplete="username"
-              />
+                  <IconScan active />
             </div>
+                <h2 className="text-xl sm:text-2xl font-extrabold tracking-tight" style={{ color: "#1a1a2e" }}>
+                  Login
+                </h2>
+              </div>
+
+              <div>
+                <label className="text-xs sm:text-sm font-semibold block mb-2" style={{ color: "#1a1a2e" }}>
+                  Warehouse
+                </label>
+                <div
+                  className="login-field flex items-center gap-3 rounded-xl px-3 sm:px-4 py-3 transition-all duration-200"
+                  style={{ border: "1.5px solid #e0e0ec", minHeight: "var(--touch-min)", background: "#fafafa" }}
+                >
+                  <IconHash />
+                  <input
+                    type="text"
+                    value={warehouse}
+                    onChange={(e) => {
+                      setWarehouse(e.target.value);
+                      setError(null);
+                    }}
+                    className="flex-1 outline-none text-base font-semibold bg-transparent min-w-0"
+                    style={{ color: "#1a1a2e", fontFamily: "'JetBrains Mono', monospace" }}
+                    placeholder="e.g. WH01"
+                    autoComplete="organization"
+                  />
           </div>
-
-          <div>
-            <label className="text-xs sm:text-sm font-semibold block mb-2" style={{ color: "#1a1a2e" }}>
-              Password
-            </label>
-            <div
-              className="flex items-center gap-3 rounded-xl px-3 sm:px-4 py-3"
-              style={{ border: "1.5px solid #e0e0ec", minHeight: "var(--touch-min)", background: "#fafafa" }}
-            >
-              <IconLock />
-              <input
-                type="password"
-                value={password}
-                onChange={(e) => {
-                  setPassword(e.target.value);
-                  setError(null);
-                }}
-                onKeyDown={(e) => {
-                  if (e.key === "Enter") handleLogin();
-                }}
-                className="flex-1 outline-none text-base font-semibold bg-transparent min-w-0"
-                style={{ color: "#1a1a2e" }}
-                placeholder="Enter password"
-                autoComplete="current-password"
-              />
-            </div>
-          </div>
-
-          {error && (
-            <div
-              className="rounded-xl px-3 py-3 flex items-start gap-2"
-              style={{ background: "#fffbeb", border: "1.5px solid #fbbf24" }}
-            >
-              <IconWarning />
-              <p className="text-xs sm:text-sm font-semibold" style={{ color: "#92400e" }}>
-                {error}
-              </p>
-            </div>
-          )}
-
-          <button
-            onClick={handleLogin}
-            className="w-full py-3.5 sm:py-4 rounded-2xl text-white font-bold text-sm sm:text-base"
-            style={{
-              background: warehouse.trim() && resource.trim() && password.trim() ? "#3b35c4" : "#b0b0cc",
-              minHeight: "var(--touch-min)",
-            }}
-          >
-            Login
-          </button>
-
-          <p className="text-[10px] sm:text-xs text-center font-semibold" style={{ color: "#9898b8" }}>
-            Demo login — enter any password to continue.
-          </p>
         </div>
-      </ScrollBody>
+
+              <div>
+                <label className="text-xs sm:text-sm font-semibold block mb-2" style={{ color: "#1a1a2e" }}>
+                  Resource
+                </label>
+                <div
+                  className="login-field flex items-center gap-3 rounded-xl px-3 sm:px-4 py-3 transition-all duration-200"
+                  style={{ border: "1.5px solid #e0e0ec", minHeight: "var(--touch-min)", background: "#fafafa" }}
+                >
+                  <IconProfile active />
+                  <input
+                    type="text"
+                    value={resource}
+                    onChange={(e) => {
+                      setResource(e.target.value);
+                      setError(null);
+                    }}
+                    className="flex-1 outline-none text-base font-semibold bg-transparent min-w-0"
+                    style={{ color: "#1a1a2e" }}
+                    placeholder="Resource / user"
+                    autoComplete="username"
+                  />
+                </div>
+              </div>
+
+              <div>
+                <label className="text-xs sm:text-sm font-semibold block mb-2" style={{ color: "#1a1a2e" }}>
+                  Password
+                </label>
+                <div
+                  className="login-field flex items-center gap-3 rounded-xl px-3 sm:px-4 py-3 transition-all duration-200"
+                  style={{ border: "1.5px solid #e0e0ec", minHeight: "var(--touch-min)", background: "#fafafa" }}
+                >
+                  <IconLock />
+                  <input
+                    type="password"
+                    value={password}
+                    onChange={(e) => {
+                      setPassword(e.target.value);
+                      setError(null);
+                    }}
+                    onKeyDown={(e) => {
+                      if (e.key === "Enter") handleLogin();
+                    }}
+                    className="flex-1 outline-none text-base font-semibold bg-transparent min-w-0"
+                    style={{ color: "#1a1a2e" }}
+                    placeholder="Enter password"
+                    autoComplete="current-password"
+                  />
+                </div>
+              </div>
+
+              {error && (
+                <div
+                  className="rounded-xl px-3 py-3 flex items-start gap-2"
+          style={{ background: "#fffbeb", border: "1.5px solid #fbbf24" }}
+        >
+          <IconWarning />
+                  <p className="text-xs sm:text-sm font-semibold" style={{ color: "#92400e" }}>
+                    {error}
+                  </p>
+                </div>
+              )}
+
+              <button
+                onClick={handleLogin}
+                disabled={!(warehouse.trim() && resource.trim() && password.trim())}
+                className={[
+                  "w-full py-3.5 sm:py-4 rounded-2xl text-white font-bold text-sm sm:text-base transition-all duration-200 disabled:opacity-70",
+                  warehouse.trim() && resource.trim() && password.trim() ? "login-btn-ready" : "",
+                ]
+                  .filter(Boolean)
+                  .join(" ")}
+                style={{
+                  background:
+                    warehouse.trim() && resource.trim() && password.trim()
+                      ? "linear-gradient(135deg, #3b35c4 0%, #26208a 100%)"
+                      : "#b0b0cc",
+                  minHeight: "var(--touch-min)",
+                }}
+              >
+                Login
+              </button>
+            </div>
+          </div>
+        </div>
+      </div>
     </ScreenShell>
   );
 }
@@ -1771,6 +1870,7 @@ function HomeScreen({
   onNavigate: (s: Screen) => void;
   onLogout: () => void;
 }) {
+  const chrome = useAppChrome();
   return (
     <ScreenShell>
       <div
@@ -1782,24 +1882,20 @@ function HomeScreen({
         }}
         className="pb-5 sm:pb-6 shrink-0"
       >
-        <div className="flex items-center justify-between gap-3">
-          <div className="min-w-0">
-            <h1 className="text-white text-xl sm:text-2xl font-extrabold tracking-tight truncate">
-              Warehouse RF
-            </h1>
-            <p className="text-gray-400 text-xs sm:text-sm mt-0.5">RF Terminal Client</p>
-          </div>
-          <div className="flex items-center gap-2 shrink-0">
-            <div
-              className="rounded-full flex items-center justify-center text-white font-bold"
+        <div className="flex items-center justify-end gap-2 shrink-0">
+            <button
+              type="button"
+              aria-label="Open profile"
+              onClick={chrome.goProfile}
+              className="rounded-full flex items-center justify-center text-white font-bold active:opacity-80"
               style={{ background: "#2e2e38", width: "var(--touch-min)", height: "var(--touch-min)" }}
             >
               M
-            </div>
+            </button>
             <button
               aria-label="Log out"
               onClick={onLogout}
-              className="rounded-full flex items-center justify-center"
+              className="rounded-full flex items-center justify-center active:opacity-80"
               style={{
                 background: "rgba(255,255,255,0.18)",
                 width: "var(--touch-min)",
@@ -1808,7 +1904,6 @@ function HomeScreen({
             >
               <IconLogout />
             </button>
-          </div>
         </div>
       </div>
 
@@ -1850,7 +1945,7 @@ function HomeScreen({
                 code: "01",
                 label: "Production",
                 Icon: IconFactory,
-                screen: null as Screen | null,
+                screen: "production" as Screen,
                 locked: false,
               },
               {
@@ -1871,21 +1966,21 @@ function HomeScreen({
                 code: "04",
                 label: "Physical Inv.",
                 Icon: IconArchive,
-                screen: null as Screen | null,
+                screen: "physical-inventory" as Screen,
                 locked: false,
               },
               {
                 code: "05",
                 label: "Internal",
                 Icon: IconInternal,
-                screen: null as Screen | null,
+                screen: "internal" as Screen,
                 locked: false,
               },
               {
                 code: "06",
                 label: "WO Selection",
                 Icon: IconWarehouseOrder,
-                screen: "picking-methods" as Screen,
+                screen: "wo-selection" as Screen,
                 locked: false,
               },
             ].map(({ code, label, Icon, screen: target, locked }) => (
@@ -1949,26 +2044,28 @@ function HomeScreen({
         </div>
       </ScrollBody>
 
-      <BottomNav
-        active="home"
-        onNavigate={(tab) => {
-          if (tab === "home") onNavigate("home");
-          else if (tab === "scan") onNavigate("scan-wo");
-          else if (tab === "activity") onNavigate("activity");
-          else if (tab === "profile") onNavigate("profile");
-        }}
-      />
+      <BottomNav active="home" />
     </ScreenShell>
   );
 }
 
-// ─── Screen: Outbound Processes ───────────────────────────────────────────────
-function OutboundScreen({ onBack, onNavigate }: { onBack: () => void; onNavigate: (s: Screen) => void }) {
+// ─── Screen: Module Processes (shared hub — same flow as Outbound) ─────────────
+function ModuleProcessesScreen({
+  title,
+  subtitle,
+  onBack,
+  onNavigate,
+}: {
+  title: string;
+  subtitle: string;
+  onBack: () => void;
+  onNavigate: (s: Screen) => void;
+}) {
   const operations = [
     {
       id: "picking",
       label: "Picking",
-      desc: "Pick products for outbound delivery",
+      desc: "Pick products for warehouse orders",
       Icon: IconArchive,
       locked: false,
     },
@@ -1990,12 +2087,7 @@ function OutboundScreen({ onBack, onNavigate }: { onBack: () => void; onNavigate
 
   return (
     <ScreenShell>
-      <TopBar
-        title="Outbound Processes"
-        subtitle="Select an operation"
-        showBack
-        onBack={onBack}
-      />
+      <TopBar title={title} subtitle={subtitle} showBack onBack={onBack} />
 
       <ScrollBody>
         {operations.map((op) => (
@@ -2003,7 +2095,7 @@ function OutboundScreen({ onBack, onNavigate }: { onBack: () => void; onNavigate
             key={op.id}
             onClick={() => !op.locked && onNavigate("picking-methods")}
             disabled={op.locked}
-            className="w-full bg-white rounded-2xl p-3.5 sm:p-4 shadow-sm flex items-center gap-3 sm:gap-4 transition-opacity"
+            className="w-full bg-white rounded-2xl p-3.5 sm:p-4 shadow-sm flex items-center gap-3 sm:gap-4 transition-opacity mb-3 last:mb-0"
             style={{ opacity: op.locked ? 0.65 : 1, minHeight: "var(--touch-min)" }}
           >
             <div
@@ -2028,7 +2120,7 @@ function OutboundScreen({ onBack, onNavigate }: { onBack: () => void; onNavigate
         ))}
       </ScrollBody>
 
-      <BottomNav active="home" onNavigate={(tab) => tab === "home" && onBack()} />
+      <BottomNav active="home" />
     </ScreenShell>
   );
 }
@@ -2036,20 +2128,14 @@ function OutboundScreen({ onBack, onNavigate }: { onBack: () => void; onNavigate
 // ─── Screen: Picking Methods ──────────────────────────────────────────────────
 function PickingMethodsScreen({
   onBack,
-  onNavigate,
+  onContinue,
 }: {
   onBack: () => void;
-  onNavigate: (s: Screen) => void;
+  onContinue: (method: PickingMethod) => void;
 }) {
   const [selected, setSelected] = useState<PickingMethod>("by-wo");
 
-  const methods = [
-    { id: "system-guided", label: "Picking System Guided", sub: "" },
-    { id: "queue", label: "System Guided by Queue", sub: "" },
-    { id: "by-wr", label: "Picking by WR", sub: "WAREHOUSE REQUEST" },
-    { id: "by-wo", label: "Picking by WO", sub: "WAREHOUSE ORDER" },
-    { id: "by-hu", label: "Picking by HU", sub: "HANDLING UNIT" },
-  ] as const;
+  const methods = PICKING_METHODS;
 
   return (
     <ScreenShell>
@@ -2101,32 +2187,38 @@ function PickingMethodsScreen({
                 )}
               </div>
               <span className="shrink-0">
-                <IconChevronRight color={isSelected ? "#3b35c4" : "#c8c8e0"} />
+              <IconChevronRight color={isSelected ? "#3b35c4" : "#c8c8e0"} />
               </span>
             </button>
           );
         })}
 
-        {selected && (
           <button
-            onClick={() => onNavigate("scan-wo")}
-            className="w-full py-3.5 sm:py-4 rounded-2xl text-white font-bold text-sm sm:text-base transition-opacity active:opacity-80 mt-2 px-3"
-            style={{ background: "#1a1a22", minHeight: "var(--touch-min)" }}
-          >
-            <span className="line-clamp-2">
-              Continue with {methods.find((m) => m.id === selected)?.label}
-            </span>
+          onClick={() => onContinue(selected)}
+          className="w-full py-3.5 sm:py-4 rounded-2xl text-white font-bold text-sm sm:text-base transition-opacity active:opacity-80 mt-2 px-3"
+          style={{ background: "#1a1a22", minHeight: "var(--touch-min)" }}
+        >
+          <span className="line-clamp-2">
+            Continue with {methods.find((m) => m.id === selected)?.label}
+          </span>
           </button>
-        )}
       </ScrollBody>
 
-      <BottomNav active="home" onNavigate={(tab) => tab === "home" && onBack()} />
+      <BottomNav active="home" />
     </ScreenShell>
   );
 }
 
 // ─── Screen: Scan WO ─────────────────────────────────────────────────────────
-function ScanWOScreen({ onBack, onNavigate }: { onBack: () => void; onNavigate: (s: Screen) => void }) {
+function ScanWOScreen({
+  onBack,
+  onNavigate,
+  flowTitle = "Picking by WO",
+}: {
+  onBack: () => void;
+  onNavigate: (s: Screen) => void;
+  flowTitle?: string;
+}) {
   const [entryMode, setEntryMode] = useState<"camera" | "manual">("camera");
   const [woNumber, setWoNumber] = useState(WarehouseOrderEntryController.emptyManualValue);
   const [status, setStatus] = useState<VerifyStatus>("waiting");
@@ -2200,7 +2292,7 @@ function ScanWOScreen({ onBack, onNavigate }: { onBack: () => void; onNavigate: 
   return (
     <ScreenShell>
       <TopBar
-        title="Picking by WO"
+        title={flowTitle}
         subtitle="Scan warehouse picking order"
         showBack
         onBack={onBack}
@@ -2229,12 +2321,12 @@ function ScanWOScreen({ onBack, onNavigate }: { onBack: () => void; onNavigate: 
             <div className="min-w-0 flex-1">
               <h2 className="text-sm sm:text-base font-extrabold leading-tight" style={{ color: "#1a1a2e" }}>
                 {PICKING_UI_TERMS.wo.scanTitle}
-              </h2>
+          </h2>
               <p className="text-[11px] sm:text-xs font-semibold mt-0.5 leading-snug" style={{ color: "#5a5a7a" }}>
                 {PICKING_UI_TERMS.wo.scanHelper}
-              </p>
+          </p>
             </div>
-          </div>
+        </div>
 
           <div
             className="shrink-0 rounded-xl px-3 py-2 flex items-center justify-between gap-2"
@@ -2307,8 +2399,8 @@ function ScanWOScreen({ onBack, onNavigate }: { onBack: () => void; onNavigate: 
                 return false;
               }}
             />
+              </div>
           </div>
-        </div>
       ) : (
         <ScrollBody className="space-y-4">
           <WorkflowProgress current="wo" />
@@ -2363,65 +2455,65 @@ function ScanWOScreen({ onBack, onNavigate }: { onBack: () => void; onNavigate: 
               <IconWarning />
               <p className="text-xs sm:text-sm font-semibold" style={{ color: "#92400e" }}>
                 Camera unavailable — enter the Warehouse Order manually.
-              </p>
-            </div>
+          </p>
+        </div>
           )}
 
           {!verified && entryMode === "manual" && (
             <>
-              <div className="flex items-center gap-3">
-                <div className="flex-1 h-px" style={{ background: "#e0e0ec" }} />
+        <div className="flex items-center gap-3">
+          <div className="flex-1 h-px" style={{ background: "#e0e0ec" }} />
                 <span
                   className="text-[10px] sm:text-xs font-bold tracking-widest shrink-0"
                   style={{ color: "#b0b0cc" }}
                 >
-                  OR MANUAL ENTRY
-                </span>
-                <div className="flex-1 h-px" style={{ background: "#e0e0ec" }} />
-              </div>
+            OR MANUAL ENTRY
+          </span>
+          <div className="flex-1 h-px" style={{ background: "#e0e0ec" }} />
+        </div>
 
-              <div>
+        <div>
                 <label className="text-xs sm:text-sm font-semibold block mb-2" style={{ color: "#1a1a2e" }}>
                   Warehouse Order (WO)
-                </label>
-                <div
+          </label>
+          <div
                   className="flex items-center gap-3 rounded-xl px-3 sm:px-4 py-3 bg-white"
                   style={{ border: "1.5px solid #e0e0ec", minHeight: "var(--touch-min)" }}
-                >
-                  <IconHash />
-                  <input
-                    type="text"
+          >
+            <IconHash />
+            <input
+              type="text"
                     inputMode="numeric"
-                    value={woNumber}
+              value={woNumber}
                     onChange={(e) => {
                       setWoNumber(e.target.value);
                       setErrorMessage(null);
                       if (status === "mismatch") setStatus("waiting");
                     }}
                     className="flex-1 outline-none text-base font-semibold bg-transparent min-w-0"
-                    style={{ color: "#1a1a2e", fontFamily: "'JetBrains Mono', monospace" }}
+              style={{ color: "#1a1a2e", fontFamily: "'JetBrains Mono', monospace" }}
                     placeholder="Enter Warehouse Order"
                     autoComplete="off"
-                  />
-                </div>
+            />
+          </div>
                 <p className="text-[11px] mt-1.5" style={{ color: "#9898b8" }}>
                   Example: {WarehouseOrderEntryController.expectedWo}
                 </p>
-              </div>
+        </div>
 
-              <button
+        <button
                 type="button"
                 onClick={() => {
                   applyWo(woNumber);
                 }}
                 className="w-full py-3.5 sm:py-4 rounded-2xl text-white font-bold text-sm sm:text-base transition-opacity active:opacity-80"
-                style={{
+          style={{
                   background: woNumber.trim() ? "#26208a" : "#b0b0cc",
                   minHeight: "var(--touch-min)",
-                }}
-              >
-                Continue with Manual Entry
-              </button>
+          }}
+        >
+          Continue with Manual Entry
+        </button>
 
               <button
                 type="button"
@@ -2442,7 +2534,7 @@ function ScanWOScreen({ onBack, onNavigate }: { onBack: () => void; onNavigate: 
         </ScrollBody>
       )}
 
-      <BottomNav active="scan" onNavigate={(tab) => tab === "home" && onBack()} />
+      <BottomNav active="scan" />
     </ScreenShell>
   );
 }
@@ -2451,95 +2543,74 @@ function ScanWOScreen({ onBack, onNavigate }: { onBack: () => void; onNavigate: 
 function PickingDetailsScreen({
   onBack,
   onNavigate,
+  method,
 }: {
   onBack: () => void;
   onNavigate: (s: Screen) => void;
+  method: PickingMethod;
 }) {
-  const [rfOpen, setRfOpen] = useState(false);
-
-  const pickSummary = [
-    {
-      label: PICKING_UI_TERMS.wo.label,
-      value: DEMO.wo,
-      meaning: PICKING_UI_TERMS.wo.meaning,
-    },
-    {
-      label: PICKING_UI_TERMS.source.label,
-      value: DEMO.sourceBin,
-      meaning: PICKING_UI_TERMS.source.meaning,
-    },
-    {
-      label: PICKING_UI_TERMS.product.label,
-      value: DEMO.product,
-      meaning: PICKING_UI_TERMS.product.meaning,
-    },
-    {
-      label: PICKING_UI_TERMS.batch.label,
-      value: DEMO.batch,
-      meaning: PICKING_UI_TERMS.batch.meaning,
-    },
-    {
-      label: PICKING_UI_TERMS.quantity.label,
-      value: `${DEMO.quantity} ${DEMO.uom}`,
-      meaning: PICKING_UI_TERMS.quantity.meaning,
-    },
-    {
-      label: UOM_UI.label,
-      value: UOM_UI.value,
-      meaning: UOM_UI.meaning,
-    },
-    {
-      label: PICKING_UI_TERMS.destination.label,
-      value: DEMO.destinationBin,
-      meaning: PICKING_UI_TERMS.destination.meaning,
-    },
-  ];
+  const methodMeta = getPickingMethodMeta(method);
+  const document = getActivePickingDocument(method);
+  const detailRows = getConsolidatedPickingDetailRows(document);
 
   return (
     <ScreenShell>
       <TopBar
         title="Picking Details"
-        subtitle="Review task before picking"
+        subtitle={`${methodMeta.label} · Review then Start`}
         showBack
         onBack={onBack}
+        compact
       />
 
-      <ScrollBody>
-        <div className="bg-white rounded-2xl p-3.5 sm:p-4 shadow-sm">
-          <div className="flex items-center justify-between gap-2 mb-3">
-            <h3 className="text-[10px] sm:text-xs font-extrabold tracking-widest uppercase min-w-0" style={{ color: "#1a1a2e" }}>
-              WO Details (RF Document)
+      <div
+        className="flex-1 min-h-0 flex flex-col gap-1.5"
+        style={{
+          paddingLeft: "var(--app-pad-x)",
+          paddingRight: "var(--app-pad-x)",
+          paddingTop: "0.35rem",
+          paddingBottom: "0.35rem",
+        }}
+      >
+        {/* Table fills remaining height between header and Start Picking */}
+        <div className="flex-1 min-h-0 flex flex-col bg-white rounded-2xl px-2.5 py-1.5 shadow-sm overflow-hidden">
+          <div className="flex items-center justify-between gap-2 shrink-0 pb-1">
+            <h3
+              className="text-[10px] font-extrabold tracking-widest uppercase min-w-0"
+              style={{ color: "#1a1a2e" }}
+            >
+              Picking Details
             </h3>
             <span
-              className="text-[10px] sm:text-xs font-bold px-2.5 sm:px-3 py-1 rounded-full shrink-0"
+              className="text-[10px] font-bold px-2 py-0.5 rounded-full shrink-0"
               style={{ background: "#d1fae5", color: "#059669" }}
             >
-              Active WO
+              Active
             </span>
           </div>
-          <div className="space-y-0">
-            {pickSummary.map((row, i) => (
+
+          <div className="flex-1 min-h-0 flex flex-col overflow-y-auto overscroll-contain">
+            {detailRows.map((row, i) => (
               <div
-                key={row.label}
-                className="flex justify-between items-start gap-3 py-2.5"
+                key={row.key}
+                className="flex justify-between items-center gap-2 flex-[1_1_0%] min-h-[1.35rem]"
                 style={{
-                  borderBottom: i < pickSummary.length - 1 ? "1px solid #f0f0f8" : "none",
+                  borderBottom: i < detailRows.length - 1 ? "1px solid #f0f0f8" : "none",
                 }}
               >
-                <div className="min-w-0 flex-1">
-                  <p className="text-xs sm:text-sm font-semibold" style={{ color: "#1a1a2e" }}>
-                    {row.label}
-                  </p>
-                  <p className="text-[11px] mt-0.5" style={{ color: "#9898b8" }}>
-                    {row.meaning}
-                  </p>
-                </div>
+                <p
+                  className="text-[11px] sm:text-xs font-semibold min-w-0 flex-1 leading-tight truncate"
+                  style={{ color: "#1a1a2e" }}
+                >
+                  {row.label}
+                </p>
                 <span
-                  className="text-xs sm:text-sm font-bold text-right break-all shrink-0 max-w-[45%]"
+                  className="text-[11px] sm:text-xs font-bold text-right shrink-0 max-w-[50%] leading-tight truncate"
                   style={{
                     color: "#1a1a2e",
                     fontFamily: "'JetBrains Mono', monospace",
                   }}
+                  title={row.value}
                 >
                   {row.value}
                 </span>
@@ -2548,43 +2619,9 @@ function PickingDetailsScreen({
           </div>
         </div>
 
-        <div className="bg-white rounded-2xl p-3.5 sm:p-4 shadow-sm">
-          <button
-            type="button"
-            onClick={() => setRfOpen((o) => !o)}
-            className="w-full flex items-center justify-between gap-2 text-left"
-          >
-            <p className="text-xs sm:text-sm font-extrabold" style={{ color: "#1a1a2e" }}>
-              RF Document Fields
-            </p>
-            <span className="text-xs font-bold" style={{ color: "#3b35c4" }}>
-              {rfOpen ? "Hide" : "Show"}
-            </span>
-          </button>
-          {rfOpen && (
-            <div className="mt-3 space-y-0">
-              {RF_DOCUMENT_FIELDS.map((row, i) => (
-                <div
-                  key={row.label}
-                  className="flex justify-between items-start gap-3 py-2"
-                  style={{
-                    borderBottom: i < RF_DOCUMENT_FIELDS.length - 1 ? "1px solid #f0f0f8" : "none",
-                  }}
-                >
-                  <div className="min-w-0">
-                    <p className="text-xs font-semibold" style={{ color: "#1a1a2e" }}>{row.label}</p>
-                    <p className="text-[11px] mt-0.5" style={{ color: "#9898b8" }}>{row.meaning}</p>
-                  </div>
-                  <span className="text-xs font-semibold shrink-0" style={{ color: "#c0c0d8" }}>{row.value}</span>
-                </div>
-              ))}
-            </div>
-          )}
-        </div>
-
         <button
           onClick={() => onNavigate("picking-execution")}
-          className="w-full py-3.5 sm:py-4 rounded-2xl text-white font-bold text-sm sm:text-base flex items-center justify-center gap-3 transition-all active:opacity-80"
+          className="w-full shrink-0 py-2.5 rounded-2xl text-white font-bold text-sm flex items-center justify-center gap-2 transition-all active:opacity-80"
           style={{
             background: "#3b35c4",
             minHeight: "var(--touch-min)",
@@ -2593,9 +2630,9 @@ function PickingDetailsScreen({
           <IconPlay />
           Start Picking
         </button>
-      </ScrollBody>
+      </div>
 
-      <BottomNav active="scan" onNavigate={(tab) => tab === "home" && onBack()} />
+      <BottomNav active="scan" />
     </ScreenShell>
   );
 }
@@ -2603,41 +2640,35 @@ function PickingDetailsScreen({
 // ─── Screen: Picking Execution (sequential scan → verify → next) ─────────────
 const SUCCESS_FLASH_MS = 900;
 
-const EXEC_STEPS: {
-  id: PickingStepId;
-  label: string;
-  expected: string;
-  displayValue: string;
-  meaning: string;
-  kind: "scan" | "quantity";
-  scanTitle: string;
-  helper: string;
-  mismatchTitle: string;
-  mismatchHint: string;
-}[] = PICKING_STEP_ORDER.filter((id) => id !== "wo").map((id) => {
-  const term = PICKING_UI_TERMS[id];
-  return {
-    id,
-    label: term.label,
-    expected: EXPECTED_BY_STEP[id],
-    displayValue: pickingDisplayValue(id),
-    meaning: term.meaning,
-    kind: id === "quantity" ? "quantity" : "scan",
-    scanTitle: term.scanTitle,
-    helper: term.scanHelper,
-    mismatchTitle: term.mismatchTitle,
-    mismatchHint: term.mismatchHint,
-  };
-});
+function buildExecSteps(stepOrder: readonly PickingStepId[]) {
+  return stepOrder.map((id) => {
+    const term = PICKING_UI_TERMS[id];
+    return {
+      id,
+      label: term.label,
+      expected: EXPECTED_BY_STEP[id],
+      displayValue: pickingDisplayValue(id),
+      meaning: term.meaning,
+      kind: (id === "quantity" ? "quantity" : "scan") as "scan" | "quantity",
+      scanTitle: term.scanTitle,
+      helper: term.scanHelper,
+      mismatchTitle: term.mismatchTitle,
+      mismatchHint: term.mismatchHint,
+    };
+  });
+}
 
 function PickingExecutionScreen({
   onBack,
   onFinish,
+  flowTitle,
 }: {
   onBack: () => void;
   onFinish: () => void;
+  flowTitle: string;
 }) {
   const [workflow, setWorkflow] = useState<PickingWorkflowState>(createInitialPickingState);
+  const EXEC_STEPS = buildExecSteps(workflow.stepOrder);
   const [inputValue, setInputValue] = useState("");
   const [scanning, setScanning] = useState(false);
   const [showManual, setShowManual] = useState(false);
@@ -2683,6 +2714,13 @@ function PickingExecutionScreen({
       }),
     );
   }, [workflow.current, showSummary, showManual, showSuccessFlash, activeStep.kind]);
+
+  /** Prefill editable quantity with the required AQty when the Quantity step opens. */
+  useEffect(() => {
+    if (workflow.current !== "quantity") return;
+    if (showSuccessFlash || complete) return;
+    setInputValue(DEMO.quantity);
+  }, [workflow.current, showSuccessFlash, complete]);
 
   function flashSuccess(stepId: PickingStepId, value: string) {
     if (successTimerRef.current !== null) {
@@ -2743,47 +2781,16 @@ function PickingExecutionScreen({
   }
 
   if (showSummary) {
-    const summaryRows: {
-      id: PickingStepId;
-      label: string;
-      value: string;
-    }[] = [
-      {
-        id: "wo",
-        label: PICKING_UI_TERMS.wo.label,
-        value: getVerifiedDisplayValue(workflow, "wo") ?? DEMO.wo,
-      },
-      {
-        id: "source",
-        label: PICKING_UI_TERMS.source.label,
-        value: getVerifiedDisplayValue(workflow, "source") ?? DEMO.sourceBin,
-      },
-      {
-        id: "product",
-        label: PICKING_UI_TERMS.product.label,
-        value: getVerifiedDisplayValue(workflow, "product") ?? DEMO.product,
-      },
-      {
-        id: "batch",
-        label: PICKING_UI_TERMS.batch.label,
-        value: getVerifiedDisplayValue(workflow, "batch") ?? DEMO.batch,
-      },
-      {
-        id: "quantity",
-        label: PICKING_UI_TERMS.quantity.label,
-        value: getVerifiedDisplayValue(workflow, "quantity") ?? `${DEMO.quantity} ${DEMO.uom}`,
-      },
-      {
-        id: "destination",
-        label: PICKING_UI_TERMS.destination.label,
-        value: getVerifiedDisplayValue(workflow, "destination") ?? DEMO.destinationBin,
-      },
-    ];
+    const summaryRows = workflow.stepOrder.map((id) => ({
+      id,
+      label: PICKING_UI_TERMS[id].label,
+      value: getVerifiedDisplayValue(workflow, id) ?? pickingDisplayValue(id),
+    }));
 
     return (
       <ScreenShell>
         <TopBar
-          title="Picking by WO"
+          title={flowTitle}
           subtitle={VERIFICATION_SUMMARY_UI.title}
           showBack
           onBack={onBack}
@@ -2793,6 +2800,7 @@ function PickingExecutionScreen({
             current={workflow.current}
             complete
             verified={workflow.verified}
+                  stepOrder={workflow.stepOrder}
           />
           <div className="bg-white rounded-2xl p-4 sm:p-5 shadow-sm space-y-3">
             <div className="flex flex-col items-center gap-2 text-center">
@@ -2876,7 +2884,7 @@ function PickingExecutionScreen({
             </button>
           </div>
         </ScrollBody>
-        <BottomNav active="scan" onNavigate={(tab) => tab === "home" && onBack()} />
+        <BottomNav active="scan" />
       </ScreenShell>
     );
   }
@@ -2885,7 +2893,7 @@ function PickingExecutionScreen({
     return (
       <ScreenShell>
         <TopBar
-          title="Picking by WO"
+          title={flowTitle}
           subtitle="Verified — continuing"
           showBack
           onBack={onBack}
@@ -2895,6 +2903,7 @@ function PickingExecutionScreen({
             current={workflow.current}
             complete={complete}
             verified={workflow.verified}
+                  stepOrder={workflow.stepOrder}
           />
           <div className="bg-white rounded-2xl p-6 sm:p-8 shadow-sm flex flex-col items-center gap-3 text-center hero-success-pop">
             <div
@@ -2919,11 +2928,11 @@ function PickingExecutionScreen({
               {justVerified.value}
             </p>
             <p className="text-xs sm:text-sm font-semibold" style={{ color: "#5a5a7a" }}>
-              {movingToNextLabel(justVerified.stepId)}
+              {movingToNextLabel(justVerified.stepId, workflow.stepOrder)}
             </p>
           </div>
         </ScrollBody>
-        <BottomNav active="scan" onNavigate={(tab) => tab === "home" && onBack()} />
+        <BottomNav active="scan" />
       </ScreenShell>
     );
   }
@@ -2933,7 +2942,7 @@ function PickingExecutionScreen({
   return (
     <ScreenShell>
       <TopBar
-        title="Picking by WO"
+        title={flowTitle}
         subtitle={activeStep.scanTitle}
         showBack
         onBack={onBack}
@@ -2951,7 +2960,8 @@ function PickingExecutionScreen({
             <WorkflowProgress
               current={workflow.current}
               verified={workflow.verified}
-            />
+                    stepOrder={workflow.stepOrder}
+          />
           </div>
 
           <div className="shrink-0 flex items-center gap-3">
@@ -2984,6 +2994,9 @@ function PickingExecutionScreen({
               style={{ color: "#1a1a2e", fontFamily: "'JetBrains Mono', monospace" }}
             >
               {activeStep.displayValue}
+            </p>
+            <p className="text-[10px] font-semibold mt-1.5" style={{ color: "#7c7c99" }}>
+              Scan the barcode, or use Enter Manually and type this value.
             </p>
           </div>
 
@@ -3126,6 +3139,7 @@ function PickingExecutionScreen({
           <WorkflowProgress
             current={workflow.current}
             verified={workflow.verified}
+                  stepOrder={workflow.stepOrder}
           />
 
           <div className="flex flex-col items-center gap-2 text-center">
@@ -3193,7 +3207,7 @@ function PickingExecutionScreen({
                 <button
                   onClick={() => {
                     setWorkflow((s) => clearStepFailure(s));
-                    setInputValue("");
+                    setInputValue(DEMO.quantity);
                   }}
                   className="w-full mt-3 py-2.5 rounded-xl text-white text-xs font-bold"
                   style={{ background: "#1a1a22", minHeight: "var(--touch-min)" }}
@@ -3239,7 +3253,8 @@ function PickingExecutionScreen({
                 onClick={() => {
                   submitRawValue(inputValue);
                 }}
-                className="w-full py-3.5 rounded-2xl text-white font-bold text-sm"
+                disabled={!inputValue.trim()}
+                className="w-full py-3.5 rounded-2xl text-white font-bold text-sm disabled:opacity-70 active:opacity-90"
                 style={{
                   background: inputValue.trim() ? "#26208a" : "#b0b0cc",
                   minHeight: "var(--touch-min)",
@@ -3313,7 +3328,7 @@ function PickingExecutionScreen({
                       color: "#1a1a2e",
                       fontFamily: "'JetBrains Mono', monospace",
                     }}
-                    placeholder="Enter quantity"
+                    aria-label="Quantity picked"
                   />
                   <span
                     className="text-xs font-bold shrink-0 px-2 py-1 rounded-lg"
@@ -3325,7 +3340,8 @@ function PickingExecutionScreen({
               </div>
               <button
                 onClick={() => submitRawValue(inputValue)}
-                className="w-full py-3.5 rounded-2xl text-white font-bold text-sm"
+                disabled={!inputValue.trim()}
+                className="w-full py-3.5 rounded-2xl text-white font-bold text-sm disabled:opacity-70 active:opacity-90"
                 style={{
                   background: inputValue.trim() ? "#26208a" : "#b0b0cc",
                   minHeight: "var(--touch-min)",
@@ -3346,7 +3362,7 @@ function PickingExecutionScreen({
         </ScrollBody>
       )}
 
-      <BottomNav active="scan" onNavigate={(tab) => tab === "home" && onBack()} />
+      <BottomNav active="scan" />
     </ScreenShell>
   );
 }
@@ -3627,10 +3643,10 @@ function ConfirmQuantityScreen({
         )}
 
         {status !== "verified" ? (
-          <button
+        <button
             onClick={handleConfirm}
             className="w-full py-3.5 sm:py-4 rounded-2xl text-white font-bold text-sm sm:text-base transition-opacity active:opacity-80"
-            style={{
+          style={{
               background: qty.trim() ? "#26208a" : "#b0b0cc",
               minHeight: "var(--touch-min)",
             }}
@@ -3656,7 +3672,7 @@ function ConfirmQuantityScreen({
         </button>
       </ScrollBody>
 
-      <BottomNav active="scan" onNavigate={(tab) => tab === "home" && onBack()} />
+      <BottomNav active="scan" />
     </ScreenShell>
   );
 }
@@ -3694,31 +3710,40 @@ function ScanDestinationBinScreen({
 function PickingCompleteScreen({
   onHome,
   onBackToPicking,
+  flowTitle,
 }: {
   onHome: () => void;
   onBackToPicking: () => void;
+  flowTitle: string;
 }) {
-  const summary = [
-    { label: PICKING_UI_TERMS.wo.label, value: DEMO.wo },
-    { label: PICKING_UI_TERMS.source.label, value: DEMO.sourceBin },
-    { label: PICKING_UI_TERMS.product.label, value: DEMO.product },
-    { label: PICKING_UI_TERMS.batch.label, value: DEMO.batch },
-    { label: "Quantity", value: DEMO.quantity },
-    { label: UOM_UI.label, value: DEMO.uom },
-    { label: PICKING_UI_TERMS.destination.label, value: DEMO.destinationBin },
-  ];
+  const pickDocument = getActivePickingDocument();
+  const detailRows = getConsolidatedPickingDetailRows(pickDocument);
+  const required = new Set(pickDocument.requiredVerificationSteps);
+
+  function handlePrint() {
+    const doc = window.document;
+    const previousTitle = doc.title;
+    doc.title = " ";
+    const restoreTitle = () => {
+      doc.title = previousTitle;
+      window.removeEventListener("afterprint", restoreTitle);
+    };
+    window.addEventListener("afterprint", restoreTitle);
+    window.print();
+    window.setTimeout(restoreTitle, 1000);
+  }
 
   return (
     <ScreenShell>
       <TopBar
         title={PICKING_COMPLETE_UI.title}
-        subtitle={PICKING_COMPLETE_UI.description}
+        subtitle={flowTitle}
         showBack
         onBack={onHome}
       />
 
       <ScrollBody>
-        <div className="bg-white rounded-2xl p-5 sm:p-6 shadow-sm flex flex-col items-center gap-3 text-center">
+        <div className="bg-white rounded-2xl p-5 sm:p-6 shadow-sm flex flex-col items-center gap-3 text-center print:hidden">
           <div
             className="w-16 h-16 sm:w-20 sm:h-20 rounded-full flex items-center justify-center step-glyph-verified"
             style={{ background: "#d1fae5" }}
@@ -3734,49 +3759,64 @@ function PickingCompleteScreen({
           >
             {PICKING_COMPLETE_UI.description}
           </span>
-          <p className="text-[10px] sm:text-xs font-semibold" style={{ color: "#9898b8" }}>
-            {PICKING_COMPLETE_UI.disclaimer}
-          </p>
         </div>
 
-        <div className="bg-white rounded-2xl p-3.5 sm:p-4 shadow-sm">
-          <h3
-            className="text-[10px] sm:text-xs font-extrabold tracking-widest uppercase mb-3"
-            style={{ color: "#1a1a2e" }}
-          >
-            Completed Pick Summary
-          </h3>
-          <div className="space-y-0">
-            {summary.map((row, i) => (
-              <div
-                key={row.label}
-                className="flex justify-between items-start gap-3 py-2.5"
-                style={{
-                  borderBottom: i < summary.length - 1 ? "1px solid #f0f0f8" : "none",
-                }}
-              >
-                <div className="min-w-0 flex-1">
-                  <span className="text-xs sm:text-sm font-semibold shrink-0" style={{ color: "#1a1a2e" }}>
-                    {row.label}
-                  </span>
-                </div>
-                <span
-                  className="text-xs sm:text-sm font-bold text-right break-all shrink-0 max-w-[45%]"
-                  style={{
-                    color: "#1a1a2e",
-                    fontFamily: "'JetBrains Mono', monospace",
-                  }}
-                >
-                  {row.value}
-                </span>
-              </div>
-            ))}
+        <div
+          id="picking-complete-print"
+          className="bg-white rounded-2xl p-3.5 sm:p-4 shadow-sm"
+        >
+          <div className="picking-print-header mb-3">
+            <h3
+              className="text-[10px] sm:text-xs font-extrabold tracking-widest uppercase"
+              style={{ color: "#1a1a2e" }}
+            >
+              Picking Details
+            </h3>
+            <p className="picking-print-meta">
+              {flowTitle} · WO {pickDocument.wo}
+            </p>
           </div>
+
+          <table className="picking-print-table w-full border-collapse">
+            <thead>
+              <tr>
+                <th scope="col">Field</th>
+                <th scope="col">Value</th>
+                <th scope="col">Status</th>
+              </tr>
+            </thead>
+            <tbody>
+              {detailRows.map((row) => {
+                const wasVerified = row.stepId != null && required.has(row.stepId);
+                return (
+                  <tr key={row.key}>
+                    <td className="picking-print-label">{row.label}</td>
+                    <td className="picking-print-value">{row.value}</td>
+                    <td className="picking-print-status">
+                      {wasVerified ? (
+                        <span className="picking-status-verified">Verified</span>
+                      ) : (
+                        <span className="picking-status-na">—</span>
+                      )}
+                    </td>
+                  </tr>
+                );
+              })}
+            </tbody>
+          </table>
         </div>
 
         <button
+          onClick={handlePrint}
+          className="w-full py-3.5 sm:py-4 rounded-2xl text-white font-bold text-sm sm:text-base transition-opacity active:opacity-80 print:hidden"
+          style={{ background: "#059669", minHeight: "var(--touch-min)" }}
+        >
+          {PICKING_COMPLETE_UI.printLabel}
+        </button>
+
+        <button
           onClick={onBackToPicking}
-          className="w-full py-3.5 sm:py-4 rounded-2xl text-white font-bold text-sm sm:text-base transition-opacity active:opacity-80"
+          className="w-full py-3.5 sm:py-4 rounded-2xl text-white font-bold text-sm sm:text-base transition-opacity active:opacity-80 print:hidden"
           style={{ background: "#3b35c4", minHeight: "var(--touch-min)" }}
         >
           Back to Picking
@@ -3784,20 +3824,21 @@ function PickingCompleteScreen({
 
         <button
           onClick={onHome}
-          className="w-full py-3.5 sm:py-4 rounded-2xl text-white font-bold text-sm sm:text-base transition-opacity active:opacity-80 mb-1"
+          className="w-full py-3.5 sm:py-4 rounded-2xl text-white font-bold text-sm sm:text-base transition-opacity active:opacity-80 mb-1 print:hidden"
           style={{ background: "#1a1a22", minHeight: "var(--touch-min)" }}
         >
           Return to Home
         </button>
       </ScrollBody>
 
-      <BottomNav active="home" onNavigate={(tab) => tab === "home" && onHome()} />
+      <BottomNav active="home" />
     </ScreenShell>
   );
 }
 
 // ─── Screen: Activity ─────────────────────────────────────────────────────────
 function ActivityScreen({ onBack }: { onBack: () => void }) {
+  const chrome = useAppChrome();
   const activities = [
     { time: "14:32", action: "WO 200028 started", user: "Muruga", status: "active", color: "#3b35c4" },
     { time: "13:15", action: "WO 200021 completed", user: "Muruga", status: "done", color: "#059669" },
@@ -3822,12 +3863,27 @@ function ActivityScreen({ onBack }: { onBack: () => void }) {
             Activity Log
           </h1>
           <div className="flex items-center gap-2 shrink-0">
-            <div
-              className="rounded-full flex items-center justify-center text-white font-bold text-sm"
+            <button
+              type="button"
+              aria-label="Open profile"
+              onClick={chrome.goProfile}
+              className="rounded-full flex items-center justify-center text-white font-bold text-sm active:opacity-80"
               style={{ background: "#2e2e38", width: "var(--touch-min)", height: "var(--touch-min)" }}
             >
               M
-            </div>
+            </button>
+            <button
+              aria-label="Log out"
+              onClick={chrome.logout}
+              className="rounded-full flex items-center justify-center active:opacity-80"
+              style={{
+                background: "rgba(255,255,255,0.18)",
+                width: "var(--touch-min)",
+                height: "var(--touch-min)",
+              }}
+            >
+              <IconLogout />
+            </button>
           </div>
         </div>
         <p className="text-gray-400 text-xs sm:text-sm mt-0.5">Recent warehouse operations</p>
@@ -3875,13 +3931,30 @@ function ActivityScreen({ onBack }: { onBack: () => void }) {
         ))}
       </ScrollBody>
 
-      <BottomNav active="activity" onNavigate={(tab) => tab === "home" && onBack()} />
+      <BottomNav active="activity" />
     </ScreenShell>
   );
 }
 
 // ─── Screen: Profile ──────────────────────────────────────────────────────────
 function ProfileScreen({ onBack, onLogout }: { onBack: () => void; onLogout: () => void }) {
+  const [notice, setNotice] = useState<string | null>(null);
+
+  const menuItems: { label: string; message: string }[] = [
+    {
+      label: "App Settings",
+      message: "Terminal settings are managed by your warehouse administrator.",
+    },
+    {
+      label: "Notification Preferences",
+      message: "Push and scan alerts can be configured when connected to SAP.",
+    },
+    {
+      label: "About",
+      message: "RF Scanner · Warehouse picking demo · Version 1.0",
+    },
+  ];
+
   return (
     <ScreenShell>
       <div
@@ -3899,7 +3972,6 @@ function ProfileScreen({ onBack, onLogout }: { onBack: () => void; onLogout: () 
       </div>
 
       <ScrollBody className="-mt-5 sm:-mt-6">
-        {/* Avatar card */}
         <div className="bg-white rounded-2xl p-4 sm:p-5 shadow-sm flex flex-col items-center gap-2">
           <div
             className="w-16 h-16 sm:w-20 sm:h-20 rounded-full flex items-center justify-center text-white text-2xl sm:text-3xl font-extrabold"
@@ -3916,7 +3988,6 @@ function ProfileScreen({ onBack, onLogout }: { onBack: () => void; onLogout: () 
           </span>
         </div>
 
-        {/* Info card */}
         <div className="bg-white rounded-2xl p-3.5 sm:p-4 shadow-sm space-y-0">
           {[
             { label: "Role", value: "Warehouse Operator" },
@@ -3937,33 +4008,55 @@ function ProfileScreen({ onBack, onLogout }: { onBack: () => void; onLogout: () 
           ))}
         </div>
 
-        {/* Settings */}
         <div className="bg-white rounded-2xl p-3.5 sm:p-4 shadow-sm space-y-0">
-          {["App Settings", "Notification Preferences", "About"].map((item, i, arr) => (
+          {menuItems.map((item, i, arr) => (
             <button
-              key={item}
-              className="w-full flex justify-between items-center gap-3 py-3"
+              key={item.label}
+              type="button"
+              onClick={() => setNotice(item.message)}
+              className="w-full flex justify-between items-center gap-3 py-3 active:opacity-80"
               style={{
                 borderBottom: i < arr.length - 1 ? "1px solid #f0f0f8" : "none",
                 minHeight: "var(--touch-min)",
               }}
             >
-              <span className="text-xs sm:text-sm font-semibold text-left" style={{ color: "#1a1a2e" }}>{item}</span>
+              <span className="text-xs sm:text-sm font-semibold text-left" style={{ color: "#1a1a2e" }}>{item.label}</span>
               <IconChevronRight color="#c8c8e0" />
             </button>
           ))}
         </div>
 
+        {notice && (
+          <div
+            className="rounded-2xl px-3.5 py-3 flex items-start gap-2"
+            style={{ background: "#eeeeff", border: "1.5px solid #c8c8f0" }}
+          >
+            <div className="min-w-0 flex-1">
+              <p className="text-xs sm:text-sm font-semibold" style={{ color: "#1a1a2e" }}>
+                {notice}
+              </p>
+            </div>
+            <button
+              type="button"
+              onClick={() => setNotice(null)}
+              className="text-xs font-bold shrink-0 active:opacity-80"
+              style={{ color: "#3b35c4" }}
+            >
+              Dismiss
+            </button>
+          </div>
+        )}
+
         <button
           onClick={onLogout}
-          className="w-full py-3.5 sm:py-4 rounded-2xl font-bold text-sm sm:text-base mb-2"
+          className="w-full py-3.5 sm:py-4 rounded-2xl font-bold text-sm sm:text-base mb-2 active:opacity-90"
           style={{ background: "#fff0f0", color: "#dc2626", minHeight: "var(--touch-min)" }}
         >
           Sign Out
         </button>
       </ScrollBody>
 
-      <BottomNav active="profile" onNavigate={(tab) => tab === "home" && onBack()} />
+      <BottomNav active="profile" />
     </ScreenShell>
   );
 }
@@ -3972,6 +4065,8 @@ function ProfileScreen({ onBack, onLogout }: { onBack: () => void; onLogout: () 
 export default function App() {
   const [screen, setScreen] = useState<Screen>("login");
   const [history, setHistory] = useState<Screen[]>([]);
+  const [pickingMethod, setPickingMethod] = useState<PickingMethod>("by-wo");
+  const flowTitle = getPickingMethodMeta(pickingMethod).flowTitle;
 
   const receivingUi: ReceivingSharedUi = {
     ScreenShell,
@@ -4007,13 +4102,18 @@ export default function App() {
     setScreen("picking-methods");
   }
 
+  function continueWithMethod(method: PickingMethod) {
+    setPickingMethod(method);
+    navigate("picking-details");
+  }
+
   function logout() {
     setHistory([]);
     setScreen("login");
   }
 
-  function navTab(tab: "home" | "scan" | "activity" | "profile") {
-    const map: Record<string, Screen> = {
+  function navTab(tab: NavTab) {
+    const map: Record<NavTab, Screen> = {
       home: "home",
       scan: "scan-wo",
       activity: "activity",
@@ -4023,7 +4123,19 @@ export default function App() {
     setScreen(map[tab]);
   }
 
+  function goProfile() {
+    setHistory((h) => (screen === "profile" ? h : [...h, screen]));
+    setScreen("profile");
+  }
+
+  const chrome: AppChromeValue = {
+    navigateTab: navTab,
+    logout,
+    goProfile,
+  };
+
   return (
+    <AppChromeContext.Provider value={chrome}>
     <div
       className="flex items-stretch justify-center min-h-dvh w-full"
       style={{ background: "#1a1a2e" }}
@@ -4034,14 +4146,12 @@ export default function App() {
       >
         {screen === "login" && <LoginScreen onLogin={goHome} />}
         {screen === "home" && <HomeScreen onNavigate={navigate} onLogout={logout} />}
-        {screen === "outbound" && (
-          <OutboundScreen onBack={goBack} onNavigate={navigate} />
-        )}
-        {screen === "inbound" && (
-          <InboundHubScreen
-            ui={receivingUi}
+        {isModuleHubScreen(screen) && (
+          <ModuleProcessesScreen
+            title={MODULE_HUB_CONFIG[screen].title}
+            subtitle={MODULE_HUB_CONFIG[screen].subtitle}
             onBack={goBack}
-            onStartReceiving={() => navigate("scan-po")}
+            onNavigate={navigate}
           />
         )}
         {screen === "scan-po" && (
@@ -4062,18 +4172,23 @@ export default function App() {
           <GoodsReceiptScreen ui={receivingUi} onHome={goHome} />
         )}
         {screen === "picking-methods" && (
-          <PickingMethodsScreen onBack={goBack} onNavigate={navigate} />
+          <PickingMethodsScreen onBack={goBack} onContinue={continueWithMethod} />
         )}
         {screen === "scan-wo" && (
-          <ScanWOScreen onBack={goBack} onNavigate={navigate} />
+          <ScanWOScreen onBack={goBack} onNavigate={navigate} flowTitle={flowTitle} />
         )}
         {screen === "picking-details" && (
-          <PickingDetailsScreen onBack={goBack} onNavigate={navigate} />
+          <PickingDetailsScreen
+            onBack={goBack}
+            onNavigate={navigate}
+            method={pickingMethod}
+          />
         )}
         {screen === "picking-execution" && (
           <PickingExecutionScreen
             onBack={goBack}
             onFinish={() => navigate("picking-complete")}
+            flowTitle={flowTitle}
           />
         )}
         {screen === "scan-source-bin" && (
@@ -4092,11 +4207,16 @@ export default function App() {
           <ScanDestinationBinScreen onBack={goBack} onNavigate={navigate} />
         )}
         {screen === "picking-complete" && (
-          <PickingCompleteScreen onHome={goHome} onBackToPicking={goToPicking} />
+          <PickingCompleteScreen
+            onHome={goHome}
+            onBackToPicking={goToPicking}
+            flowTitle={flowTitle}
+          />
         )}
         {screen === "activity" && <ActivityScreen onBack={goBack} />}
         {screen === "profile" && <ProfileScreen onBack={goBack} onLogout={logout} />}
       </div>
     </div>
+    </AppChromeContext.Provider>
   );
 }

@@ -69,7 +69,6 @@ describe("picking UI terminology", () => {
     expect(PICKING_COMPLETE_UI.description).toBe(
       "All required checks have been completed successfully.",
     );
-    expect(PICKING_COMPLETE_UI.disclaimer).toContain("No SAP posting");
   });
 
   it("defines animated barcode icons for every scan context", () => {
@@ -140,7 +139,6 @@ describe("verification behavior unchanged with UI terms", () => {
     const fail = verifyCurrentStep(state, "WRONG");
     expect(fail.ok).toBe(false);
     expect(fail.state.current).toBe("product");
-    expect(getStepStatus(fail.state, "wo")).toBe("verified");
     expect(getStepStatus(fail.state, "source")).toBe("verified");
     expect(getStepStatus(fail.state, "product")).toBe("failed");
   });

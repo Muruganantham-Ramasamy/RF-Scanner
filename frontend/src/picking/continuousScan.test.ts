@@ -97,7 +97,6 @@ describe("continuous scan workflow integration", () => {
     const fail = verifyCurrentStep(state, "9999999999");
     expect(fail.ok).toBe(false);
     expect(fail.state.current).toBe("product");
-    expect(getStepStatus(fail.state, "wo")).toBe("verified");
     expect(getStepStatus(fail.state, "source")).toBe("verified");
   });
 

@@ -84,6 +84,35 @@ textarea {
 ::-webkit-scrollbar { width: 0; height: 0; }
 * { scrollbar-width: none; }
 
+@keyframes login-card-in {
+  from {
+    opacity: 0;
+    transform: translateY(12px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+.login-card-enter {
+  animation: login-card-in 0.45s ease-out both;
+}
+
+.login-field:focus-within {
+  border-color: #3b35c4 !important;
+  background: #ffffff !important;
+  box-shadow: 0 0 0 3px rgba(59, 53, 196, 0.12);
+}
+
+.login-btn-ready {
+  box-shadow: 0 8px 24px rgba(59, 53, 196, 0.35);
+}
+
+.login-btn-ready:active {
+  transform: scale(0.98);
+}
+
 @keyframes pulse {
   0%, 100% { opacity: 1; }
   50% { opacity: 0.45; }
@@ -252,3 +281,141 @@ textarea {
 .hero-success-pop {
   animation: success-hero-pop 0.55s cubic-bezier(0.34, 1.4, 0.64, 1) both;
 }
+
+.picking-print-meta {
+  margin: 0.25rem 0 0;
+  font-size: 0.7rem;
+  font-weight: 600;
+  color: #7c7c99;
+}
+
+.picking-print-table {
+  width: 100%;
+  border-collapse: collapse;
+}
+
+.picking-print-table th {
+  text-align: left;
+  font-size: 0.65rem;
+  font-weight: 800;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: #7c7c99;
+  padding: 0.4rem 0.35rem;
+  border-bottom: 1.5px solid #e0e0ec;
+}
+
+.picking-print-table td {
+  padding: 0.55rem 0.35rem;
+  border-bottom: 1px solid #f0f0f8;
+  vertical-align: middle;
+  font-size: 0.8rem;
+}
+
+.picking-print-table tr:last-child td {
+  border-bottom: none;
+}
+
+.picking-print-label {
+  font-weight: 600;
+  color: #1a1a2e;
+  width: 42%;
+}
+
+.picking-print-value {
+  font-weight: 700;
+  color: #1a1a2e;
+  font-family: "JetBrains Mono", ui-monospace, monospace;
+  word-break: break-word;
+}
+
+.picking-print-status {
+  text-align: right;
+  width: 22%;
+  white-space: nowrap;
+}
+
+.picking-status-verified {
+  color: #059669;
+  font-weight: 700;
+  font-size: 0.75rem;
+}
+
+.picking-status-na {
+  color: #c0c0d8;
+  font-weight: 600;
+}
+
+@media print {
+  @page {
+    margin: 16mm 14mm;
+    size: auto;
+  }
+
+  html,
+  body {
+    background: #fff !important;
+    color: #111 !important;
+    -webkit-print-color-adjust: exact;
+    print-color-adjust: exact;
+  }
+
+  body * {
+    visibility: hidden !important;
+  }
+
+  #picking-complete-print,
+  #picking-complete-print * {
+    visibility: visible !important;
+  }
+
+  #picking-complete-print {
+    position: absolute;
+    left: 0;
+    top: 0;
+    width: 100%;
+    max-width: none;
+    margin: 0;
+    padding: 0;
+    background: #fff !important;
+    border-radius: 0 !important;
+    box-shadow: none !important;
+  }
+
+  .picking-print-header h3 {
+    font-size: 14pt !important;
+    letter-spacing: 0.08em;
+    margin: 0 0 4pt;
+    color: #111 !important;
+  }
+
+  .picking-print-meta {
+    display: block !important;
+    font-size: 9pt !important;
+    color: #444 !important;
+    margin: 0 0 12pt !important;
+  }
+
+  .picking-print-table th {
+    font-size: 8pt !important;
+    padding: 6pt 4pt !important;
+    border-bottom: 1.5pt solid #222 !important;
+    color: #333 !important;
+  }
+
+  .picking-print-table td {
+    font-size: 10pt !important;
+    padding: 7pt 4pt !important;
+    border-bottom: 0.5pt solid #ccc !important;
+  }
+
+  .picking-status-verified {
+    color: #047857 !important;
+    font-size: 9pt !important;
+  }
+
+  .print\:hidden {
+    display: none !important;
+  }
+}
+

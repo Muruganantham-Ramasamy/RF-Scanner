@@ -1,4 +1,5 @@
 {
+  "title": "RF Scanner",
   "description": "This mobile application offers comprehensive RF scanning capabilities, enabling users to efficiently detect and analyze radio frequencies for enhanced communication and monitoring.",
   "robots": {
     "index": false

@@ -1,10 +1,6 @@
-/**
- * Display-only warehouse/SAP terminology + worker-friendly explanations.
- * Does not affect domain validation or scanner behavior.
- */
-
 import type { PickingStepId } from "./pickingWorkflowService";
 import { DEMO_PICK, EXPECTED_BY_STEP } from "./pickingWorkflowService";
+import { DEMO_PICKING_DOCUMENT } from "./pickingDataSource";
 
 export type UiTerm = {
   /** Technical / SAP primary label */
@@ -89,8 +85,7 @@ export const UOM_UI = {
 export const PICKING_COMPLETE_UI = {
   title: "Picking Complete",
   description: "All required checks have been completed successfully.",
-  disclaimer:
-    "This is a demonstration workflow. No SAP posting has been performed.",
+  printLabel: "Print",
 } as const;
 
 export const CAMERA_ACTIVE_STATUS = "Camera active — point at the barcode" as const;
@@ -114,14 +109,25 @@ export function verifiedSuccessLabel(stepId: PickingStepId): string {
 }
 
 /** Short line under success flash before auto-opening the next step. */
-export function movingToNextLabel(completedStepId: PickingStepId): string {
-  const order = ["wo", "source", "product", "batch", "quantity", "destination"] as const;
-  const idx = order.indexOf(completedStepId);
-  if (idx < 0 || idx >= order.length - 1) {
+export function movingToNextLabel(
+  completedStepId: PickingStepId,
+  stepOrder: readonly PickingStepId[] = [
+    "wo",
+    "source",
+    "product",
+    "batch",
+    "quantity",
+    "destination",
+  ],
+): string {
+  const idx = stepOrder.indexOf(completedStepId);
+  if (idx < 0 || idx >= stepOrder.length - 1) {
     return "Moving to Verification Summary...";
   }
-  const next = order[idx + 1];
+  const next = stepOrder[idx + 1];
   switch (next) {
+    case "wo":
+      return "Moving to Warehouse Order...";
     case "source":
       return "Moving to Source Bin...";
     case "product":
@@ -158,18 +164,14 @@ export type RfFieldUi = {
   value: string;
 };
 
-/** RF document placeholders — values are display-only "Not assigned". */
-export const RF_DOCUMENT_FIELDS: readonly RfFieldUi[] = [
-  { label: "Pick-HU", meaning: "Handling unit used for picking", value: "Not assigned" },
-  { label: "SrcHU", meaning: "Handling unit at the source", value: "Not assigned" },
-  { label: "DestHU", meaning: "Handling unit at the destination", value: "Not assigned" },
-  { label: "Pack Mat", meaning: "Packaging material", value: "Not assigned" },
-  { label: "LP", meaning: "License plate / handling-unit identifier", value: "Not assigned" },
-  { label: "PlnHUs", meaning: "Planned handling units", value: "Not assigned" },
-  { label: "ActHUs", meaning: "Actual handling units", value: "Not assigned" },
-  { label: "HUWh", meaning: "Handling unit warehouse information", value: "Not assigned" },
-  { label: "LogPos", meaning: "Item position", value: "Not assigned" },
-] as const;
+/** RF document placeholders — sourced from the picking document data layer. */
+export const RF_DOCUMENT_FIELDS: readonly RfFieldUi[] = DEMO_PICKING_DOCUMENT.rfFields.map(
+  (f) => ({
+    label: f.label,
+    meaning: f.meaning,
+    value: f.value,
+  }),
+);
 
 export function pickingDisplayValue(stepId: PickingStepId): string {
   if (stepId === "quantity") {
