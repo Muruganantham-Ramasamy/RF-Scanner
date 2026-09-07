@@ -27,11 +27,20 @@ function afterSource(state = createInitialPickingState()): PickingWorkflowState 
 }
 
 describe("PickingWorkflowService — sequential verification", () => {
-  it("1. Start Picking begins at Warehouse Order", () => {
+  it("1. Start Picking begins at Warehouse Order unless it was already scanned", () => {
     const state = createInitialPickingState();
     expect(state.verified).toEqual([]);
     expect(state.current).toBe("wo");
     expect(getStepStatus(state, "wo")).toBe("current");
+  });
+
+  it("1b. After the WO gate, Start Picking begins at Source Bin", () => {
+    const state = createInitialPickingState({ alreadyVerified: { wo: "200028" } });
+    expect(state.verified).toEqual(["wo"]);
+    expect(state.current).toBe("source");
+    expect(getStepStatus(state, "wo")).toBe("verified");
+    expect(getStepStatus(state, "source")).toBe("current");
+    expect(state.verifiedValues?.wo).toBe("200028");
   });
 
   it("2. Source Bin succeeds and advances to Product", () => {

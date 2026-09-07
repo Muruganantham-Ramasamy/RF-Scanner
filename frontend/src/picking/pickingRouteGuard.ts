@@ -1,6 +1,7 @@
 /**
  * Route guard for Picking-by-WO.
- * Picking Details / execution require a successfully verified Warehouse Order.
+ * Flow: Scan Warehouse Order → Picking Details → remaining scanners.
+ * Details and execution require a successfully verified Warehouse Order.
  */
 
 export type PickingSessionGate = {

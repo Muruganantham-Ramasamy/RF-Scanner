@@ -91,8 +91,10 @@ const DEMO_RF_FIELDS: readonly RfDocumentField[] = [
 ];
 
 /**
- * Demo required verification after Start Picking.
- * Order: WO → SBin → Product → Batch → Quantity → DstBin.
+ * Full required verification sequence for a pick document.
+ * Picking by WO scans Warehouse Order first, then shows Picking Details.
+ * Start Picking then runs the remaining scanners:
+ * SBin → Product → Batch → Quantity → DstBin.
  * RF Document Fields stay on the details table but are not scanned.
  * SAP can replace this list later without redesigning the UI.
  */

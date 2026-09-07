@@ -22,16 +22,25 @@ const DEMO_SEQUENCE = [
 ] as const;
 
 /**
- * Client demo flow after Start Picking:
- * WO → SBin → Product → Batch → Quantity → Destination → Summary → Complete
+ * Client demo flow for Picking by WO:
+ * Scan Warehouse Order → Picking Details → Start Picking
+ * → SBin → Product → Batch → Quantity → Destination → Summary → Complete
  */
 describe("sequential automatic picking flow", () => {
-  it("Start Picking begins at Warehouse Order", () => {
+  it("Picking by WO starts at the Warehouse Order scanner", () => {
     const state = createInitialPickingState();
     expect(state.current).toBe("wo");
     expect(state.stepOrder).toEqual([...DEMO_REQUIRED_VERIFICATION_STEPS]);
     expect(getStepStatus(state, "wo")).toBe("current");
     expect(shouldAutoStartCamera("wo")).toBe(true);
+  });
+
+  it("after the Warehouse Order is scanned, Start Picking begins at Source Bin", () => {
+    const state = createInitialPickingState({ alreadyVerified: { wo: "200028" } });
+    expect(state.current).toBe("source");
+    expect(getStepStatus(state, "wo")).toBe("verified");
+    expect(getStepStatus(state, "source")).toBe("current");
+    expect(shouldAutoStartCamera("source")).toBe(true);
   });
 
   it("WO success → automatically opens Source Bin", () => {

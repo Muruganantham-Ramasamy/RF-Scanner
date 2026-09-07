@@ -42,6 +42,12 @@ import { safeBarcodeScanner, createSafeScanSession } from "./picking/safeBarcode
 import { getScanContext, shouldAutoStartCamera } from "./picking/scanContext";
 import { WarehouseOrderEntryController } from "./picking/warehouseOrderEntry";
 import {
+  clearPickingSessionGate,
+  createPickingSessionGate,
+  markWoVerified,
+  resolvePickingNavigation,
+} from "./picking/pickingRouteGuard";
+import {
   GoodsReceiptScreen,
   ReceivingExecutionScreen,
   ScanPurchaseOrderScreen,
@@ -2212,11 +2218,11 @@ function PickingMethodsScreen({
 // ─── Screen: Scan WO ─────────────────────────────────────────────────────────
 function ScanWOScreen({
   onBack,
-  onNavigate,
+  onVerified,
   flowTitle = "Picking by WO",
 }: {
   onBack: () => void;
-  onNavigate: (s: Screen) => void;
+  onVerified: (wo: string) => void;
   flowTitle?: string;
 }) {
   const [entryMode, setEntryMode] = useState<"camera" | "manual">("camera");
@@ -2234,10 +2240,10 @@ function ScanWOScreen({
   useEffect(() => {
     if (!verified) return;
     const timer = window.setTimeout(() => {
-      onNavigate("picking-details");
+      onVerified(woNumber);
     }, 900);
     return () => window.clearTimeout(timer);
-  }, [verified, onNavigate]);
+  }, [verified, onVerified, woNumber]);
 
   function applyWo(raw: string): boolean {
     const session = scanSessionRef.current;
@@ -2307,7 +2313,7 @@ function ScanWOScreen({
           }}
         >
           <div className="shrink-0">
-            <WorkflowProgress current="wo" />
+            <WorkflowProgress current="wo" stepOrder={["wo"]} />
           </div>
 
           <div className="shrink-0 flex items-center gap-3">
@@ -2403,7 +2409,7 @@ function ScanWOScreen({
           </div>
       ) : (
         <ScrollBody className="space-y-4">
-          <WorkflowProgress current="wo" />
+          <WorkflowProgress current="wo" stepOrder={["wo"]} />
 
           <div className="text-center space-y-3">
             <div className="flex justify-center">
@@ -2662,12 +2668,18 @@ function PickingExecutionScreen({
   onBack,
   onFinish,
   flowTitle,
+  verifiedWo = null,
 }: {
   onBack: () => void;
   onFinish: () => void;
   flowTitle: string;
+  verifiedWo?: string | null;
 }) {
-  const [workflow, setWorkflow] = useState<PickingWorkflowState>(createInitialPickingState);
+  const [workflow, setWorkflow] = useState<PickingWorkflowState>(() =>
+    verifiedWo
+      ? createInitialPickingState({ alreadyVerified: { wo: verifiedWo } })
+      : createInitialPickingState(),
+  );
   const EXEC_STEPS = buildExecSteps(workflow.stepOrder);
   const [inputValue, setInputValue] = useState("");
   const [scanning, setScanning] = useState(false);
@@ -4066,6 +4078,9 @@ export default function App() {
   const [screen, setScreen] = useState<Screen>("login");
   const [history, setHistory] = useState<Screen[]>([]);
   const [pickingMethod, setPickingMethod] = useState<PickingMethod>("by-wo");
+  const [pickingGate, setPickingGate] = useState(createPickingSessionGate);
+  const pickingGateRef = useRef(pickingGate);
+  pickingGateRef.current = pickingGate;
   const flowTitle = getPickingMethodMeta(pickingMethod).flowTitle;
 
   const receivingUi: ReceivingSharedUi = {
@@ -4081,9 +4096,20 @@ export default function App() {
     IconChevronRight,
   };
 
-  function navigate(to: Screen) {
+  function resetPickingGate() {
+    const cleared = clearPickingSessionGate();
+    pickingGateRef.current = cleared;
+    setPickingGate(cleared);
+    return cleared;
+  }
+
+  function navigate(to: Screen, method: PickingMethod = pickingMethod) {
+    const resolved =
+      method === "by-wo"
+        ? (resolvePickingNavigation(to, pickingGateRef.current) as Screen)
+        : to;
     setHistory((h) => [...h, screen]);
-    setScreen(to);
+    setScreen(resolved);
   }
 
   function goBack() {
@@ -4093,21 +4119,37 @@ export default function App() {
   }
 
   function goHome() {
+    resetPickingGate();
     setHistory([]);
     setScreen("home");
   }
 
   function goToPicking() {
+    resetPickingGate();
     setHistory([]);
     setScreen("picking-methods");
   }
 
   function continueWithMethod(method: PickingMethod) {
     setPickingMethod(method);
-    navigate("picking-details");
+    resetPickingGate();
+    if (method === "by-wo") {
+      navigate("scan-wo", method);
+      return;
+    }
+    navigate("picking-details", method);
+  }
+
+  function handleWoVerified(wo: string) {
+    const next = markWoVerified(pickingGateRef.current, wo);
+    pickingGateRef.current = next;
+    setPickingGate(next);
+    setHistory((h) => [...h, screen]);
+    setScreen("picking-details");
   }
 
   function logout() {
+    resetPickingGate();
     setHistory([]);
     setScreen("login");
   }
@@ -4175,7 +4217,7 @@ export default function App() {
           <PickingMethodsScreen onBack={goBack} onContinue={continueWithMethod} />
         )}
         {screen === "scan-wo" && (
-          <ScanWOScreen onBack={goBack} onNavigate={navigate} flowTitle={flowTitle} />
+          <ScanWOScreen onBack={goBack} onVerified={handleWoVerified} flowTitle={flowTitle} />
         )}
         {screen === "picking-details" && (
           <PickingDetailsScreen
@@ -4186,9 +4228,11 @@ export default function App() {
         )}
         {screen === "picking-execution" && (
           <PickingExecutionScreen
+            key={pickingGate.verifiedWo ?? pickingMethod}
             onBack={goBack}
             onFinish={() => navigate("picking-complete")}
             flowTitle={flowTitle}
+            verifiedWo={pickingMethod === "by-wo" ? pickingGate.verifiedWo : null}
           />
         )}
         {screen === "scan-source-bin" && (

@@ -70,10 +70,17 @@ export type CreatePickingStateOptions = {
   document?: PickingDocument;
   /** Override required steps (defaults to document.requiredVerificationSteps). */
   requiredSteps?: readonly PickingStepId[];
+  /**
+   * Steps already completed before Start Picking (e.g. Warehouse Order scanned
+   * on the dedicated WO gate screen). Those steps are marked verified and skipped.
+   */
+  alreadyVerified?: Partial<Record<PickingStepId, string>>;
 };
 
 /**
- * Start Picking begins at the first *required* verification step from the document.
+ * Start Picking begins at the first *required* verification step that is not
+ * already verified. For Picking by WO the Warehouse Order is scanned first,
+ * then Picking Details, then the remaining scanners.
  * RF Document Fields are display-only unless included in requiredSteps.
  */
 export function createInitialPickingState(
@@ -84,17 +91,26 @@ export function createInitialPickingState(
     options.requiredSteps ??
     document.requiredVerificationSteps ??
     DEMO_REQUIRED_VERIFICATION_STEPS;
-  const first = stepOrder[0] ?? "source";
+  const alreadyVerified = options.alreadyVerified ?? {};
+  const now = Date.now();
+  const verified = stepOrder.filter((id) => Boolean(alreadyVerified[id]));
+  const verifiedValues: Partial<Record<PickingStepId, string>> = {};
+  const verifiedAt: Partial<Record<PickingStepId, number>> = {};
+  for (const id of verified) {
+    verifiedValues[id] = alreadyVerified[id]!;
+    verifiedAt[id] = now;
+  }
+  const first = stepOrder.find((id) => !alreadyVerified[id]) ?? stepOrder[0] ?? "source";
 
   return {
-    verified: [],
+    verified,
     current: first,
     stepOrder: [...stepOrder],
     failureKind: null,
     failedValue: null,
-    complete: false,
-    verifiedValues: {},
-    verifiedAt: {},
+    complete: verified.length > 0 && verified.length >= stepOrder.length,
+    verifiedValues,
+    verifiedAt,
   };
 }
 
