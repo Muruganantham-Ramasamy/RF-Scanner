@@ -6,6 +6,7 @@ import {
   useState,
   type ReactNode,
 } from "react";
+import { Camera } from "@capacitor/camera";
 import {
   CAMERA_ACTIVE_STATUS,
   PICKING_COMPLETE_UI,
@@ -1018,14 +1019,26 @@ function CameraScanOverlay({
     }
 
     if (!navigator.mediaDevices?.getUserMedia) {
-      setCameraHint("Try again or enter the barcode manually.");
+      setCameraHint("Camera API is unavailable.");
       onUnreadable?.();
       setMode("unavailable");
       return;
     }
 
     try {
+      const permission = await Camera.requestPermissions({
+        permissions: ["camera"],
+      });
+
+      if (permission.camera !== "granted") {
+        setCameraHint("Camera permission is required to scan barcodes.");
+        onUnreadable?.();
+        setMode("unavailable");
+        return;
+      }
+
       let stream: MediaStream;
+
       try {
         stream = await navigator.mediaDevices.getUserMedia({
           audio: false,
@@ -1041,10 +1054,13 @@ function CameraScanOverlay({
           video: true,
         });
       }
+
       streamRef.current = stream;
       setMode("scanning");
-    } catch {
-      setCameraHint("Try again or enter the barcode manually.");
+    } catch (error) {
+      console.error("Camera startup failed:", error);
+
+      setCameraHint("Camera could not be started. Try again or enter manually.");
       onUnreadable?.();
       setMode("unavailable");
     }

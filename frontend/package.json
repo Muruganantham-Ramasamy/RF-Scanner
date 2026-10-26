@@ -12,6 +12,11 @@
     "test:watch": "vitest --config vitest.config.ts"
   },
   "dependencies": {
+    "@capacitor/android": "^8.5.1",
+    "@capacitor/camera": "^8.2.4",
+    "@capacitor/cli": "^8.5.1",
+    "@capacitor/core": "^8.5.1",
+    "@capacitor/ios": "^8.5.1",
     "@zxing/browser": "^0.2.1",
     "@zxing/library": "^0.23.0",
     "react": "^19.0.0",
