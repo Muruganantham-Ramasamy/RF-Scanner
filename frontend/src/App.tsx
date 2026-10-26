@@ -6,6 +6,7 @@ import {
   useState,
   type ReactNode,
 } from "react";
+import { Capacitor } from "@capacitor/core";
 import { Camera } from "@capacitor/camera";
 import {
   CAMERA_ACTIVE_STATUS,
@@ -1026,15 +1027,19 @@ function CameraScanOverlay({
     }
 
     try {
-      const permission = await Camera.requestPermissions({
-        permissions: ["camera"],
-      });
+      // Native iOS/Android: request OS camera permission via Capacitor.
+      // Web (Vercel/browser): skip — getUserMedia prompts the browser itself.
+      if (Capacitor.isNativePlatform()) {
+        const permission = await Camera.requestPermissions({
+          permissions: ["camera"],
+        });
 
-      if (permission.camera !== "granted") {
-        setCameraHint("Camera permission is required to scan barcodes.");
-        onUnreadable?.();
-        setMode("unavailable");
-        return;
+        if (permission.camera !== "granted") {
+          setCameraHint("Camera permission is required to scan barcodes.");
+          onUnreadable?.();
+          setMode("unavailable");
+          return;
+        }
       }
 
       let stream: MediaStream;
@@ -1060,7 +1065,14 @@ function CameraScanOverlay({
     } catch (error) {
       console.error("Camera startup failed:", error);
 
-      setCameraHint("Camera could not be started. Try again or enter manually.");
+      const name = error instanceof DOMException ? error.name : "";
+      if (name === "NotAllowedError" || name === "PermissionDeniedError") {
+        setCameraHint("Camera permission was denied. Allow camera access in the browser, then try again.");
+      } else if (name === "NotFoundError" || name === "DevicesNotFoundError") {
+        setCameraHint("No camera was found on this device. Enter the barcode manually.");
+      } else {
+        setCameraHint("Camera could not be started. Try again or enter manually.");
+      }
       onUnreadable?.();
       setMode("unavailable");
     }
