@@ -15,7 +15,8 @@
       }
     },
     "android": {
-      "package": "com.fedhub.rfscanner",
+      "package": "com.rfscanner.app",
+      "versionCode": 1,
       "adaptiveIcon": {
         "backgroundColor": "#0B1F3A",
         "foregroundImage": "./assets/images/android-icon-foreground.png",
@@ -23,7 +24,10 @@
         "monochromeImage": "./assets/images/android-icon-monochrome.png"
       },
       "predictiveBackGestureEnabled": false,
-      "permissions": ["CAMERA", "android.permission.CAMERA"]
+      "softwareKeyboardLayoutMode": "resize",
+      "permissions": [
+        "android.permission.CAMERA"
+      ]
     },
     "web": {
       "output": "static",
@@ -46,14 +50,23 @@
           "image": "./assets/images/splash-icon.png",
           "imageWidth": 76
         }
-      ]
+      ],
+      "expo-secure-store"
     ],
     "experiments": {
       "typedRoutes": true,
       "reactCompiler": true
     },
     "extra": {
-      "apiBaseUrl": ""
+      "apiBaseUrl": "",
+      "router": {
+        "asyncRoutes": {
+          "web": true
+        }
+      },
+      "eas": {
+        "projectId": "3fa8b0eb-f7e2-4a0b-b357-a6b780291c79"
+      }
     }
   }
 }

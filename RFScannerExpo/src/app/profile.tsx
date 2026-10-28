@@ -1,5 +1,6 @@
 import { type Href, router } from 'expo-router';
-import { Pressable, StyleSheet, Text, View } from 'react-native';
+import { Alert, Pressable, StyleSheet, Text, View } from 'react-native';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import {
   IconChevronRight,
@@ -11,29 +12,64 @@ import { BottomNav } from '@/components/shell/BottomNav';
 import { ScreenShell, ScrollBody } from '@/components/shell/ScreenShell';
 import { WarehouseColors, WarehouseRadius, WarehouseSpacing, TouchMin } from '@/constants/warehouseTheme';
 import { useSession } from '@/context/SessionContext';
+import { pingAdmin } from '@/services/auth/authApi';
 
-const INFO = [
-  { label: 'Role', value: 'Warehouse Operator' },
-  { label: 'Terminal', value: 'RF-TERMINAL-01' },
-  { label: 'Shift', value: 'Morning (06:00 - 14:00)' },
-  { label: 'Session', value: 'WRF-2026-0821' },
-];
-
-const SETTINGS = [
-  { label: 'App Settings', Icon: IconSettings },
-  { label: 'Notification Preferences', Icon: IconNotifications },
-  { label: 'About', Icon: IconInfo },
-];
+function roleLabel(role: string | undefined): string {
+  if (role === 'admin') return 'Administrator';
+  if (role === 'warehouse_operator') return 'Warehouse Operator';
+  return role || 'Unknown';
+}
 
 export default function ProfileScreen() {
-  const { user, signOut } = useSession();
-  const resource = user?.resource || 'Muruga';
+  const { user, signOut, isAdmin } = useSession();
+  const insets = useSafeAreaInsets();
+  const resource = user?.resource || user?.email || 'User';
   const warehouse = user?.warehouse || 'WH01';
   const initial = resource.charAt(0).toUpperCase();
 
+  const info = [
+    { label: 'Role', value: roleLabel(user?.role) },
+    { label: 'Email', value: user?.email || '—' },
+    { label: 'Terminal', value: 'RF-TERMINAL-01' },
+    { label: 'Warehouse', value: warehouse },
+  ];
+
+  const settings = [
+    {
+      label: 'App Settings',
+      Icon: IconSettings,
+      onPress: () =>
+        Alert.alert('App Settings', 'Settings are not configured in this demo build.'),
+    },
+    {
+      label: 'Notification Preferences',
+      Icon: IconNotifications,
+      onPress: () =>
+        Alert.alert('Notifications', 'Notification preferences are not configured in this demo build.'),
+    },
+    {
+      label: 'About',
+      Icon: IconInfo,
+      onPress: () => router.push('/explore' as Href),
+    },
+  ];
+
+  async function runAdminProbe() {
+    if (!user?.token) {
+      Alert.alert('Admin', 'Not authenticated.');
+      return;
+    }
+    const result = await pingAdmin(user.token);
+    if (!result.ok) {
+      Alert.alert('Admin access denied', result.error);
+      return;
+    }
+    Alert.alert('Admin access', result.data.message || 'Administrator privileges confirmed.');
+  }
+
   return (
     <ScreenShell>
-      <View style={styles.header}>
+      <View style={[styles.header, { paddingTop: Math.max(insets.top, 12) }]}>
         <Text style={styles.title}>Profile</Text>
       </View>
 
@@ -49,19 +85,36 @@ export default function ProfileScreen() {
         </View>
 
         <View style={styles.card}>
-          {INFO.map((row, i) => (
-            <View key={row.label} style={[styles.row, i < INFO.length - 1 && styles.rowBorder]}>
+          {info.map((row, i) => (
+            <View key={row.label} style={[styles.row, i < info.length - 1 && styles.rowBorder]}>
               <Text style={styles.rowLabel}>{row.label}</Text>
               <Text style={styles.rowValue}>{row.value}</Text>
             </View>
           ))}
         </View>
 
+        {isAdmin ? (
+          <View style={styles.card}>
+            <Pressable
+              accessibilityRole="button"
+              onPress={() => void runAdminProbe()}
+              style={styles.settingsRow}>
+              <View style={styles.settingsLeft}>
+                <IconSettings size={18} color={WarehouseColors.accent} />
+                <Text style={styles.settingsLabel}>Verify admin access</Text>
+              </View>
+              <IconChevronRight size={18} color="#c8c8e0" />
+            </Pressable>
+          </View>
+        ) : null}
+
         <View style={styles.card}>
-          {SETTINGS.map((item, i) => (
+          {settings.map((item, i) => (
             <Pressable
               key={item.label}
-              style={[styles.settingsRow, i < SETTINGS.length - 1 && styles.rowBorder]}>
+              accessibilityRole="button"
+              onPress={item.onPress}
+              style={[styles.settingsRow, i < settings.length - 1 && styles.rowBorder]}>
               <View style={styles.settingsLeft}>
                 <item.Icon size={18} color={WarehouseColors.text} />
                 <Text style={styles.settingsLabel}>{item.label}</Text>
@@ -73,8 +126,7 @@ export default function ProfileScreen() {
 
         <Pressable
           onPress={() => {
-            signOut();
-            router.replace('/login' as Href);
+            void signOut().then(() => router.replace('/login' as Href));
           }}
           style={styles.signOut}>
           <Text style={styles.signOutText}>Sign Out</Text>
@@ -89,7 +141,6 @@ const styles = StyleSheet.create({
   header: {
     backgroundColor: WarehouseColors.navy,
     paddingHorizontal: WarehouseSpacing.lg,
-    paddingTop: 40,
     paddingBottom: 40,
   },
   title: { color: WarehouseColors.white, fontSize: 22, fontWeight: '800' },

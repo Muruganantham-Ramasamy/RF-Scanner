@@ -40,7 +40,7 @@ export default function InboundScreen() {
 const styles = StyleSheet.create({
   receivingCard: {
     backgroundColor: WarehouseColors.white,
-    borderRadius: WarehouseRadius.xl,
+    borderRadius: WarehouseRadius.card,
     padding: WarehouseSpacing.lg,
     flexDirection: 'row',
     alignItems: 'center',

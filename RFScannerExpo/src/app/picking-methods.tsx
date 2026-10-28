@@ -75,7 +75,7 @@ export default function PickingMethodsScreen() {
 const styles = StyleSheet.create({
   card: {
     backgroundColor: WarehouseColors.white,
-    borderRadius: WarehouseRadius.xl,
+    borderRadius: WarehouseRadius.card,
     padding: WarehouseSpacing.lg,
     flexDirection: 'row',
     alignItems: 'center',

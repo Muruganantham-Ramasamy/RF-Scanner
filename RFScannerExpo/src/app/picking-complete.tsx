@@ -82,11 +82,13 @@ export default function PickingCompleteScreen() {
               <View
                 key={row.key}
                 style={[styles.row, i < detailRows.length - 1 && styles.rowBorder]}>
-                <Text style={styles.rowLabel}>{row.label}</Text>
+                <View style={styles.rowTop}>
+                  <Text style={styles.rowLabel}>{row.label}</Text>
+                  <Text style={[styles.status, wasVerified && styles.statusOk]}>
+                    {wasVerified ? 'Verified' : '—'}
+                  </Text>
+                </View>
                 <Text style={styles.rowValue}>{row.value}</Text>
-                <Text style={[styles.status, wasVerified && styles.statusOk]}>
-                  {wasVerified ? 'Verified' : '—'}
-                </Text>
               </View>
             );
           })}
@@ -163,25 +165,27 @@ const styles = StyleSheet.create({
     color: WarehouseColors.textMuted,
   },
   row: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 8,
-    paddingVertical: 8,
+    gap: 4,
+    paddingVertical: 10,
   },
   rowBorder: { borderBottomWidth: 1, borderBottomColor: '#f0f0f8' },
-  rowLabel: { flex: 1.2, fontSize: 12, fontWeight: '700', color: WarehouseColors.text },
+  rowTop: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    gap: 8,
+  },
+  rowLabel: { flex: 1, fontSize: 11, fontWeight: '700', color: WarehouseColors.textMuted },
   rowValue: {
-    flex: 1,
-    textAlign: 'right',
-    fontSize: 12,
+    fontSize: 13,
     fontWeight: '800',
     color: WarehouseColors.text,
   },
-  status: { width: 58, textAlign: 'right', fontSize: 11, fontWeight: '700', color: '#c0c0d8' },
+  status: { fontSize: 11, fontWeight: '700', color: '#c0c0d8' },
   statusOk: { color: WarehouseColors.success },
   printBtn: {
     minHeight: TouchMin,
-    borderRadius: WarehouseRadius.xl,
+    borderRadius: 20,
     backgroundColor: WarehouseColors.white,
     borderWidth: 1,
     borderColor: WarehouseColors.border,
@@ -193,7 +197,7 @@ const styles = StyleSheet.create({
   printText: { color: WarehouseColors.accent, fontWeight: '800', fontSize: 15 },
   primaryBtn: {
     minHeight: TouchMin,
-    borderRadius: WarehouseRadius.xl,
+    borderRadius: 20,
     backgroundColor: WarehouseColors.accent,
     flexDirection: 'row',
     alignItems: 'center',
@@ -202,7 +206,7 @@ const styles = StyleSheet.create({
   },
   homeBtn: {
     minHeight: TouchMin,
-    borderRadius: WarehouseRadius.xl,
+    borderRadius: 20,
     backgroundColor: WarehouseColors.navy,
     flexDirection: 'row',
     alignItems: 'center',

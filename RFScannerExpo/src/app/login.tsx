@@ -19,37 +19,56 @@ import {
   IconQR,
   IconWarning,
 } from '@/components/icons/AppIcons';
-import { WarehouseColors } from '@/constants/warehouseTheme';
+import { PhoneMaxWidth, WarehouseColors } from '@/constants/warehouseTheme';
 import { useSession } from '@/context/SessionContext';
 
-const LOGIN_BG = '#17182F';
+const LOGIN_BG = WarehouseColors.chrome;
 const PANEL_DARK = '#1a1a2a';
-const PANEL_LIGHT = '#eef0f5';
+const PANEL_LIGHT = WarehouseColors.background;
 const CARD_STRIP = '#5b57c7';
-const ICON_LAVENDER = '#eeeeff';
+const ICON_LAVENDER = WarehouseColors.accentSoft;
 const INPUT_BORDER = '#d8d8ea';
 const BTN_IDLE = '#C9C8DF';
-const BTN_READY = '#3b35c4';
+const BTN_READY = WarehouseColors.accent;
 
 export default function LoginScreen() {
   const { signIn } = useSession();
   const insets = useSafeAreaInsets();
   const [warehouse, setWarehouse] = useState('WH01');
-  const [resource, setResource] = useState('Muruga');
+  const [resource, setResource] = useState('');
   const [password, setPassword] = useState('');
   const [error, setError] = useState<string | null>(null);
+  const [submitting, setSubmitting] = useState(false);
 
-  function handleLogin() {
+  async function handleLogin() {
     if (!warehouse.trim() || !resource.trim() || !password.trim()) {
-      setError('Enter warehouse, resource, and password to continue.');
+      setError('Enter warehouse, resource/email, and password to continue.');
       return;
     }
+
+    setSubmitting(true);
     setError(null);
-    signIn(warehouse, resource);
-    router.replace('/' as Href);
+    try {
+      // Resource doubles as the auth email/username (admin uses info@…).
+      const result = await signIn({
+        email: resource.trim(),
+        password,
+        warehouse,
+        resource,
+      });
+      if (!result.ok) {
+        setError(result.error);
+        return;
+      }
+      router.replace('/' as Href);
+    } finally {
+      setSubmitting(false);
+    }
   }
 
-  const canSubmit = Boolean(warehouse.trim() && resource.trim() && password.trim());
+  const canSubmit = Boolean(
+    warehouse.trim() && resource.trim() && password.trim() && !submitting,
+  );
 
   return (
     <View style={[styles.root, { paddingTop: Math.max(insets.top, 12), paddingBottom: Math.max(insets.bottom, 12) }]}>
@@ -59,7 +78,7 @@ export default function LoginScreen() {
 
         <KeyboardAvoidingView
           style={styles.flex}
-          behavior={Platform.OS === 'ios' ? 'padding' : undefined}
+          behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
           keyboardVerticalOffset={Platform.OS === 'ios' ? 12 : 0}>
           <ScrollView
             style={styles.flex}
@@ -90,14 +109,15 @@ export default function LoginScreen() {
                   icon={<IconHash size={18} color={WarehouseColors.textMuted} />}
                 />
                 <Field
-                  label="Resource"
+                  label="Resource / Email"
                   value={resource}
                   onChange={(v) => {
                     setResource(v);
                     setError(null);
                   }}
-                  placeholder="Resource / user"
+                  placeholder="Resource ID or email"
                   autoComplete="username"
+                  keyboardType="email-address"
                   icon={<IconProfile size={18} color={WarehouseColors.textMuted} />}
                 />
                 <Field
@@ -111,7 +131,7 @@ export default function LoginScreen() {
                   secureTextEntry
                   autoComplete="password"
                   icon={<IconLock size={18} color={WarehouseColors.textMuted} />}
-                  onSubmitEditing={canSubmit ? handleLogin : undefined}
+                  onSubmitEditing={canSubmit ? () => void handleLogin() : undefined}
                 />
 
                 {error ? (
@@ -125,14 +145,14 @@ export default function LoginScreen() {
                   accessibilityRole="button"
                   accessibilityState={{ disabled: !canSubmit }}
                   disabled={!canSubmit}
-                  onPress={handleLogin}
+                  onPress={() => void handleLogin()}
                   style={({ pressed }) => [
                     styles.loginBtn,
                     { backgroundColor: canSubmit ? BTN_READY : BTN_IDLE },
                     canSubmit && pressed ? styles.loginBtnPressed : null,
                     canSubmit ? styles.loginBtnReadyShadow : null,
                   ]}>
-                  <Text style={styles.loginBtnLabel}>Login</Text>
+                  <Text style={styles.loginBtnLabel}>{submitting ? 'Signing in…' : 'Login'}</Text>
                 </Pressable>
               </View>
             </View>
@@ -151,6 +171,7 @@ function Field({
   secureTextEntry,
   autoCapitalize,
   autoComplete,
+  keyboardType,
   icon,
   onSubmitEditing,
 }: {
@@ -161,6 +182,7 @@ function Field({
   secureTextEntry?: boolean;
   autoCapitalize?: 'none' | 'sentences' | 'words' | 'characters';
   autoComplete?: 'username' | 'password' | 'off';
+  keyboardType?: 'default' | 'email-address';
   icon: ReactNode;
   onSubmitEditing?: () => void;
 }) {
@@ -177,6 +199,7 @@ function Field({
           secureTextEntry={secureTextEntry}
           autoCapitalize={autoCapitalize ?? 'none'}
           autoComplete={autoComplete}
+          keyboardType={keyboardType}
           autoCorrect={false}
           onSubmitEditing={onSubmitEditing}
           returnKeyType={secureTextEntry ? 'go' : 'next'}
@@ -195,7 +218,7 @@ const styles = StyleSheet.create({
   },
   panel: {
     flex: 1,
-    maxWidth: 440,
+    maxWidth: PhoneMaxWidth,
     width: '100%',
     alignSelf: 'center',
     borderRadius: 36,

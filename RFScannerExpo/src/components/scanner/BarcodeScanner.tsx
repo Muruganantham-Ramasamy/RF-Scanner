@@ -1,7 +1,15 @@
 import { CameraView, useCameraPermissions, type BarcodeType } from 'expo-camera';
 import { useIsFocused } from 'expo-router';
 import { useEffect, useRef, useState } from 'react';
-import { StyleSheet, Text, TextInput, View } from 'react-native';
+import {
+  ActivityIndicator,
+  Linking,
+  Platform,
+  StyleSheet,
+  Text,
+  TextInput,
+  View,
+} from 'react-native';
 
 import {
   IconCamera,
@@ -15,8 +23,8 @@ import { WarehouseColors, WarehouseRadius, WarehouseSpacing } from '@/constants/
 import { createSafeScanSession } from '@/services/scanner/safeBarcodeScanner';
 
 /**
- * Formats aligned with the original ZXing / BarcodeDetector set
- * (qr, code128/39/93, ean, upc, itf, codabar). data_matrix is not in expo-camera BarcodeType.
+ * Warehouse barcode formats needed by picking / receiving demo documents.
+ * data_matrix is not in expo-camera BarcodeType on SDK 58.
  */
 export const WAREHOUSE_BARCODE_TYPES: BarcodeType[] = [
   'qr',
@@ -52,6 +60,14 @@ type BarcodeScannerProps = {
   onScanned: (value: string) => ScanDisposition;
 };
 
+type Availability = 'checking' | 'available' | 'unavailable';
+
+/**
+ * Shared warehouse barcode scanner.
+ * Uses expo-camera CameraView on Android, iOS, and web (getUserMedia + BarcodeDetector).
+ * Falls back to manual entry only when the camera is unavailable or fails to start —
+ * never fakes a successful scan.
+ */
 export function BarcodeScanner({
   title = 'Scan barcode',
   helper = 'Point the camera at the barcode.',
@@ -64,19 +80,57 @@ export function BarcodeScanner({
 }: BarcodeScannerProps) {
   const isFocused = useIsFocused();
   const [permission, requestPermission] = useCameraPermissions();
+  const [availability, setAvailability] = useState<Availability>('checking');
   const [manual, setManual] = useState('');
   const [showManual, setShowManual] = useState(false);
   const [lastValue, setLastValue] = useState<string | null>(null);
   const [cameraError, setCameraError] = useState<string | null>(null);
   const [mismatchFlash, setMismatchFlash] = useState(false);
   const [accepting, setAccepting] = useState(true);
+  const [cameraEpoch, setCameraEpoch] = useState(0);
   const sessionRef = useRef(createSafeScanSession());
   const onScannedRef = useRef(onScanned);
   const capturedRef = useRef(false);
+  const mismatchTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   onScannedRef.current = onScanned;
 
+  const permissionGranted = Boolean(permission?.granted);
   const cameraActive =
-    isFocused && enabled && accepting && !showManual && !cameraError && !capturedRef.current;
+    availability === 'available' &&
+    permissionGranted &&
+    isFocused &&
+    enabled &&
+    accepting &&
+    !showManual &&
+    !cameraError;
+
+  /**
+   * CameraView.isAvailableAsync() is a web-only probe (docs: @platform web).
+   * On Android/iOS (including Expo Go) it can resolve false / reject even when
+   * a real camera exists — which previously showed "Camera unavailable".
+   * Native runtimes assume a camera and rely on permissions + onMountError.
+   */
+  useEffect(() => {
+    let cancelled = false;
+
+    if (Platform.OS === 'android' || Platform.OS === 'ios') {
+      setAvailability('available');
+      return;
+    }
+
+    setAvailability('checking');
+    void CameraView.isAvailableAsync()
+      .then((ok) => {
+        if (!cancelled) setAvailability(ok ? 'available' : 'unavailable');
+      })
+      .catch(() => {
+        if (!cancelled) setAvailability('unavailable');
+      });
+
+    return () => {
+      cancelled = true;
+    };
+  }, []);
 
   useEffect(() => {
     sessionRef.current = createSafeScanSession();
@@ -87,13 +141,23 @@ export function BarcodeScanner({
     setMismatchFlash(false);
     setShowManual(false);
     setManual('');
+    setCameraEpoch((n) => n + 1);
   }, [title, expectedHint, enabled, resetKey]);
 
   useEffect(() => {
+    if (availability !== 'available') return;
     if (permission && !permission.granted && permission.canAskAgain) {
       void requestPermission();
     }
-  }, [permission, requestPermission]);
+  }, [availability, permission, requestPermission]);
+
+  useEffect(() => {
+    return () => {
+      if (mismatchTimerRef.current) clearTimeout(mismatchTimerRef.current);
+      sessionRef.current.release();
+      capturedRef.current = false;
+    };
+  }, []);
 
   function applyDisposition(value: string, disposition: ScanDisposition) {
     if (disposition === 'ignore') {
@@ -108,10 +172,10 @@ export function BarcodeScanner({
       setAccepting(true);
       setLastValue(null);
       setMismatchFlash(true);
-      setTimeout(() => setMismatchFlash(false), 1400);
+      if (mismatchTimerRef.current) clearTimeout(mismatchTimerRef.current);
+      mismatchTimerRef.current = setTimeout(() => setMismatchFlash(false), 1400);
       return;
     }
-    // success / void — pause until parent changes resetKey / title
     sessionRef.current.release();
     sessionRef.current.resetDuplicateMemory();
     setLastValue(value);
@@ -144,6 +208,7 @@ export function BarcodeScanner({
     setLastValue(null);
     setCameraError(null);
     setMismatchFlash(false);
+    setCameraEpoch((n) => n + 1);
   }
 
   function submitManual() {
@@ -161,18 +226,66 @@ export function BarcodeScanner({
     applyDisposition(gated.value, disposition);
   }
 
-  if (!permission) {
+  function renderManualBlock() {
+    return (
+      <View style={styles.manualBlock}>
+        <View style={styles.titleRow}>
+          <IconKeypad size={20} />
+          <Text style={styles.manualTitle}>Manual barcode entry</Text>
+        </View>
+        <TextInput
+          value={manual}
+          onChangeText={setManual}
+          placeholder="Enter barcode manually"
+          placeholderTextColor={WarehouseColors.textMuted}
+          autoCapitalize="characters"
+          autoCorrect={false}
+          returnKeyType="done"
+          onSubmitEditing={submitManual}
+          style={styles.input}
+        />
+        <Button label="Submit Manual Entry" onPress={submitManual} />
+      </View>
+    );
+  }
+
+  if (availability === 'checking' || !permission) {
     return (
       <Card>
         <View style={styles.titleRow}>
-          <IconCamera size={22} color={WarehouseColors.textMuted} />
-          <Text style={styles.status}>Checking camera permission…</Text>
+          <ActivityIndicator color={WarehouseColors.accent} />
+          <Text style={styles.status}>
+            {availability === 'checking' ? 'Checking camera…' : 'Checking camera permission…'}
+          </Text>
         </View>
       </Card>
     );
   }
 
+  if (availability === 'unavailable') {
+    return (
+      <Card style={styles.warnCard}>
+        <View style={styles.titleRow}>
+          <IconWarning size={22} color={WarehouseColors.warning} />
+          <Text style={styles.title}>Camera unavailable</Text>
+        </View>
+        <Text style={styles.helper}>
+          No camera was detected on this runtime. Manual entry remains available for workflow
+          testing. On Android, open the app in Expo Go or a device build to use live scanning.
+        </Text>
+        {expectedHint ? (
+          <View style={styles.expected}>
+            <Text style={styles.expectedLabel}>EXPECTED</Text>
+            <Text style={styles.expectedValue}>{expectedHint}</Text>
+          </View>
+        ) : null}
+        {allowManual ? renderManualBlock() : null}
+      </Card>
+    );
+  }
+
   if (!permission.granted) {
+    const canAskAgain = permission.canAskAgain;
     return (
       <Card>
         <View style={styles.titleRow}>
@@ -180,9 +293,17 @@ export function BarcodeScanner({
           <Text style={styles.title}>Camera permission required</Text>
         </View>
         <Text style={styles.helper}>
-          Allow camera access so RF Scanner can read warehouse barcodes on this device.
+          {canAskAgain
+            ? Platform.OS === 'web'
+              ? 'Allow camera access in the browser so RF Scanner can read warehouse barcodes.'
+              : 'Allow camera access so RF Scanner can read warehouse barcodes on this device.'
+            : 'Camera access is blocked. Enable the camera permission in system or browser settings, or enter barcodes manually.'}
         </Text>
-        <Button label="Allow Camera" onPress={() => void requestPermission()} />
+        {canAskAgain ? (
+          <Button label="Allow Camera" onPress={() => void requestPermission()} />
+        ) : Platform.OS !== 'web' ? (
+          <Button label="Open App Settings" onPress={() => void Linking.openSettings()} />
+        ) : null}
         {allowManual ? (
           <>
             <Button
@@ -190,19 +311,7 @@ export function BarcodeScanner({
               variant="secondary"
               onPress={() => setShowManual(true)}
             />
-            {showManual ? (
-              <View style={styles.manualBlock}>
-                <TextInput
-                  value={manual}
-                  onChangeText={setManual}
-                  placeholder="Enter barcode"
-                  placeholderTextColor={WarehouseColors.textMuted}
-                  autoCapitalize="characters"
-                  style={styles.input}
-                />
-                <Button label="Submit" onPress={submitManual} />
-              </View>
-            ) : null}
+            {showManual ? renderManualBlock() : null}
           </>
         ) : null}
       </Card>
@@ -228,26 +337,34 @@ export function BarcodeScanner({
       ) : null}
 
       {!showManual ? (
-        <View style={[styles.cameraShell, fill && styles.cameraShellFill, mismatchFlash && styles.cameraMismatch]}>
-          {isFocused ? (
-            <CameraView
-              style={StyleSheet.absoluteFill}
-              facing="back"
-              active={cameraActive}
-              barcodeScannerSettings={{ barcodeTypes: WAREHOUSE_BARCODE_TYPES }}
-              onBarcodeScanned={
-                cameraActive ? (result) => handleBarcode(result.data) : undefined
-              }
-              onMountError={(event) => {
-                setCameraError(event.message || 'Camera failed to start.');
-                setAccepting(false);
-              }}
-            />
-          ) : (
-            <View style={[StyleSheet.absoluteFill, styles.cameraOff]}>
+        <View
+          style={[
+            styles.cameraShell,
+            fill && styles.cameraShellFill,
+            mismatchFlash && styles.cameraMismatch,
+          ]}>
+          <CameraView
+            key={`camera-${cameraEpoch}-${resetKey ?? 'idle'}`}
+            style={StyleSheet.absoluteFill}
+            facing="back"
+            active={cameraActive}
+            barcodeScannerSettings={{ barcodeTypes: WAREHOUSE_BARCODE_TYPES }}
+            onBarcodeScanned={
+              cameraActive ? (result) => handleBarcode(result.data) : undefined
+            }
+            onCameraReady={() => {
+              setCameraError(null);
+            }}
+            onMountError={(event) => {
+              setCameraError(event.message || 'Camera failed to start.');
+              setAccepting(false);
+            }}
+          />
+          {!isFocused ? (
+            <View style={[StyleSheet.absoluteFill, styles.cameraOff]} pointerEvents="none">
               <Text style={styles.overlayText}>Camera paused</Text>
             </View>
-          )}
+          ) : null}
           <View style={styles.guide} pointerEvents="none" />
           <View style={styles.overlayBottom}>
             <View style={styles.overlayRow}>
@@ -256,7 +373,7 @@ export function BarcodeScanner({
               ) : (
                 <IconCamera size={14} color="#FFFFFF" />
               )}
-              <Text style={styles.overlayText}>
+              <Text style={styles.overlayText} numberOfLines={2}>
                 {!isFocused
                   ? 'Camera paused while this screen is in the background'
                   : mismatchFlash
@@ -283,7 +400,13 @@ export function BarcodeScanner({
             <Text style={styles.errorTitle}>Camera error</Text>
           </View>
           <Text style={styles.helper}>{cameraError}</Text>
-          <Button label="Try Again" onPress={unlockForRescan} />
+          <Button
+            label="Try Again"
+            onPress={() => {
+              unlockForRescan();
+              setShowManual(false);
+            }}
+          />
           {allowManual ? (
             <Button
               label="Enter Manually"
@@ -300,20 +423,8 @@ export function BarcodeScanner({
       {allowManual ? (
         <View style={styles.manualFooter}>
           {showManual ? (
-            <View style={styles.manualBlock}>
-              <View style={styles.titleRow}>
-                <IconKeypad size={20} />
-                <Text style={styles.manualTitle}>Manual barcode entry</Text>
-              </View>
-              <TextInput
-                value={manual}
-                onChangeText={setManual}
-                placeholder="Enter barcode manually"
-                placeholderTextColor={WarehouseColors.textMuted}
-                autoCapitalize="characters"
-                style={styles.input}
-              />
-              <Button label="Submit Manual Entry" onPress={submitManual} />
+            <>
+              {renderManualBlock()}
               <Button
                 label="Back to Camera"
                 variant="ghost"
@@ -322,7 +433,7 @@ export function BarcodeScanner({
                   unlockForRescan();
                 }}
               />
-            </View>
+            </>
           ) : (
             <Button
               label="Enter Manually"
@@ -346,6 +457,10 @@ const styles = StyleSheet.create({
   wrapFill: {
     flex: 1,
     minHeight: 0,
+  },
+  warnCard: {
+    backgroundColor: WarehouseColors.warningSoft,
+    borderColor: WarehouseColors.warningBorder,
   },
   titleRow: {
     flexDirection: 'row',
@@ -378,6 +493,7 @@ const styles = StyleSheet.create({
   status: {
     color: WarehouseColors.textSecondary,
     fontWeight: '600',
+    flex: 1,
   },
   expected: {
     marginTop: WarehouseSpacing.sm,
@@ -407,7 +523,7 @@ const styles = StyleSheet.create({
     textAlign: 'center',
   },
   cameraShell: {
-    height: 300,
+    height: 280,
     borderRadius: WarehouseRadius.lg,
     overflow: 'hidden',
     backgroundColor: '#0B1220',
@@ -417,7 +533,7 @@ const styles = StyleSheet.create({
   cameraShellFill: {
     flex: 1,
     height: undefined,
-    minHeight: 220,
+    minHeight: 200,
   },
   cameraMismatch: {
     borderColor: WarehouseColors.warning,
@@ -425,14 +541,14 @@ const styles = StyleSheet.create({
   cameraOff: {
     alignItems: 'center',
     justifyContent: 'center',
-    backgroundColor: '#0B1220',
+    backgroundColor: 'rgba(11,18,32,0.72)',
   },
   guide: {
     position: 'absolute',
-    left: '12%',
-    right: '12%',
-    top: '28%',
-    bottom: '28%',
+    left: '10%',
+    right: '10%',
+    top: '24%',
+    bottom: '30%',
     borderWidth: 2,
     borderColor: WarehouseColors.accent,
     borderRadius: WarehouseRadius.sm,
@@ -442,10 +558,12 @@ const styles = StyleSheet.create({
     left: 0,
     right: 0,
     bottom: 0,
-    padding: WarehouseSpacing.md,
-    backgroundColor: 'rgba(26,26,34,0.72)',
+    paddingHorizontal: WarehouseSpacing.md,
+    paddingVertical: WarehouseSpacing.sm,
+    backgroundColor: 'rgba(26,26,34,0.78)',
   },
   overlayText: {
+    flex: 1,
     color: WarehouseColors.white,
     textAlign: 'center',
     fontSize: 12,
@@ -466,6 +584,7 @@ const styles = StyleSheet.create({
     color: WarehouseColors.text,
     backgroundColor: WarehouseColors.white,
     fontWeight: '600',
+    fontSize: 16,
   },
   errorCard: {
     backgroundColor: WarehouseColors.dangerSoft,

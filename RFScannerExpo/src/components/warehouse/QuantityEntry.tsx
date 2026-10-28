@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { StyleSheet, Text, TextInput, View } from 'react-native';
+import { KeyboardAvoidingView, Platform, StyleSheet, Text, TextInput, View } from 'react-native';
 
 import { IconHash, IconQuantity, IconSuccess } from '@/components/icons/AppIcons';
 import { Button } from '@/components/ui/Button';
@@ -28,38 +28,40 @@ export function QuantityEntry({
   const [value, setValue] = useState(initialValue);
 
   return (
-    <Card>
-      <View style={styles.titleRow}>
-        <IconQuantity size={22} />
-        <Text style={styles.title}>{title}</Text>
-      </View>
-      <Text style={styles.helper}>{helper}</Text>
-      <View style={styles.expected}>
-        <Text style={styles.expectedLabel}>EXPECTED</Text>
-        <View style={styles.expectedRow}>
-          <IconHash size={14} color={WarehouseColors.textMuted} />
-          <Text style={styles.expectedValue}>{expectedHint}</Text>
+    <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
+      <Card>
+        <View style={styles.titleRow}>
+          <IconQuantity size={22} />
+          <Text style={styles.title}>{title}</Text>
         </View>
-        {uom ? <Text style={styles.uom}>UOM: {uom}</Text> : null}
-      </View>
-      <TextInput
-        value={value}
-        onChangeText={setValue}
-        keyboardType="decimal-pad"
-        placeholder={uom ? `Quantity (${uom})` : 'Quantity'}
-        placeholderTextColor={WarehouseColors.textMuted}
-        style={styles.input}
-      />
-      <Button
-        label="Confirm Quantity"
-        disabled={!value.trim()}
-        onPress={() => onSubmit(value.trim())}
-      />
-      <View style={styles.confirmHint}>
-        <IconSuccess size={16} color={WarehouseColors.accent} />
-        <Text style={styles.confirmHintText}>Confirm only after counting the picked units</Text>
-      </View>
-    </Card>
+        <Text style={styles.helper}>{helper}</Text>
+        <View style={styles.expected}>
+          <Text style={styles.expectedLabel}>EXPECTED</Text>
+          <View style={styles.expectedRow}>
+            <IconHash size={14} color={WarehouseColors.textMuted} />
+            <Text style={styles.expectedValue}>{expectedHint}</Text>
+          </View>
+          {uom ? <Text style={styles.uom}>UOM: {uom}</Text> : null}
+        </View>
+        <TextInput
+          value={value}
+          onChangeText={setValue}
+          keyboardType="decimal-pad"
+          placeholder={uom ? `Quantity (${uom})` : 'Quantity'}
+          placeholderTextColor={WarehouseColors.textMuted}
+          style={styles.input}
+        />
+        <Button
+          label="Confirm Quantity"
+          disabled={!value.trim()}
+          onPress={() => onSubmit(value.trim())}
+        />
+        <View style={styles.confirmHint}>
+          <IconSuccess size={16} color={WarehouseColors.accent} />
+          <Text style={styles.confirmHintText}>Confirm only after counting the picked units</Text>
+        </View>
+      </Card>
+    </KeyboardAvoidingView>
   );
 }
 

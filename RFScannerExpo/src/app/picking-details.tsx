@@ -50,7 +50,7 @@ export default function PickingDetailsScreen() {
                 <Text style={styles.rowLabel} numberOfLines={1}>
                   {row.label}
                 </Text>
-                <Text style={styles.rowValue} numberOfLines={2}>
+                <Text style={styles.rowValue} numberOfLines={3}>
                   {row.value}
                 </Text>
               </View>
@@ -85,7 +85,7 @@ const styles = StyleSheet.create({
     flex: 1,
     minHeight: 0,
     backgroundColor: WarehouseColors.white,
-    borderRadius: WarehouseRadius.xl,
+    borderRadius: WarehouseRadius.card,
     paddingHorizontal: WarehouseSpacing.md,
     paddingVertical: WarehouseSpacing.sm,
   },
@@ -111,19 +111,16 @@ const styles = StyleSheet.create({
   activePillText: { color: WarehouseColors.success, fontWeight: '800', fontSize: 10 },
   tableScroll: { flex: 1 },
   row: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    gap: 8,
-    paddingVertical: 8,
-    minHeight: 28,
+    flexDirection: 'column',
+    alignItems: 'stretch',
+    gap: 4,
+    paddingVertical: 10,
+    minHeight: TouchMin - 8,
   },
   rowBorder: { borderBottomWidth: 1, borderBottomColor: '#f0f0f8' },
-  rowLabel: { flex: 1, fontSize: 12, fontWeight: '700', color: WarehouseColors.text },
+  rowLabel: { fontSize: 11, fontWeight: '700', color: WarehouseColors.textMuted },
   rowValue: {
-    maxWidth: '48%',
-    textAlign: 'right',
-    fontSize: 12,
+    fontSize: 14,
     fontWeight: '800',
     color: WarehouseColors.text,
   },
@@ -135,7 +132,7 @@ const styles = StyleSheet.create({
   },
   startBtn: {
     minHeight: TouchMin,
-    borderRadius: WarehouseRadius.xl,
+    borderRadius: 20,
     backgroundColor: WarehouseColors.accent,
     flexDirection: 'row',
     alignItems: 'center',

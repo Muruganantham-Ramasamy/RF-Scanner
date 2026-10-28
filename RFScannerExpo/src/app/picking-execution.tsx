@@ -163,10 +163,12 @@ export default function PickingExecutionScreen() {
     );
   }
 
+  const Body = isQuantity && !showSuccessFlash ? ScrollBody : FlexBody;
+
   return (
     <ScreenShell>
       <TopBar title={flowTitle} subtitle={term.scanTitle} showBack />
-      <FlexBody>
+      <Body>
         <StepProgress steps={progressSteps} />
 
         {showSuccessFlash && justVerified ? (
@@ -240,7 +242,7 @@ export default function PickingExecutionScreen() {
             ) : null}
           </>
         )}
-      </FlexBody>
+      </Body>
       <BottomNav active="scan" />
     </ScreenShell>
   );
@@ -262,9 +264,7 @@ const styles = StyleSheet.create({
     borderColor: WarehouseColors.border,
     paddingHorizontal: WarehouseSpacing.md,
     paddingVertical: 10,
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
+    gap: 4,
   },
   expectedLabel: {
     fontSize: 10,
@@ -276,8 +276,6 @@ const styles = StyleSheet.create({
     fontSize: 14,
     fontWeight: '800',
     color: WarehouseColors.text,
-    maxWidth: '60%',
-    textAlign: 'right',
   },
   flash: {
     flex: 1,
@@ -324,20 +322,16 @@ const styles = StyleSheet.create({
     padding: WarehouseSpacing.lg,
   },
   row: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    gap: 12,
+    gap: 6,
     paddingVertical: 10,
   },
   rowBorder: { borderBottomWidth: 1, borderBottomColor: '#f0f0f8' },
-  summaryLeft: { flex: 1, flexDirection: 'row', alignItems: 'center', gap: 10, minWidth: 0 },
+  summaryLeft: { flexDirection: 'row', alignItems: 'center', gap: 10, minWidth: 0 },
   rowLabel: { fontSize: 13, fontWeight: '700', color: WarehouseColors.success },
   timeRow: { flexDirection: 'row', alignItems: 'center', gap: 4, marginTop: 2 },
   timeText: { fontSize: 10, fontWeight: '600', color: WarehouseColors.textMuted },
   rowValue: {
-    maxWidth: '42%',
-    textAlign: 'right',
+    paddingLeft: 42,
     fontSize: 13,
     fontWeight: '800',
     color: WarehouseColors.text,

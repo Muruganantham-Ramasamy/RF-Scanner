@@ -92,7 +92,7 @@ export default function ScanWOScreen() {
             title={term.scanTitle}
             helper={term.scanHelper}
             expectedHint={WarehouseOrderEntryController.expectedWo}
-            resetKey={`wo-${status}`}
+            resetKey="wo-gate"
             fill
             enabled
             onScanned={onScan}
@@ -133,9 +133,7 @@ const styles = StyleSheet.create({
     borderColor: WarehouseColors.border,
     paddingHorizontal: WarehouseSpacing.md,
     paddingVertical: 10,
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
+    gap: 4,
   },
   expectedLabel: {
     fontSize: 10,

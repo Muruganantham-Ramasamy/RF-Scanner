@@ -1,6 +1,7 @@
 import { type Href, router } from 'expo-router';
 import { type ComponentType } from 'react';
 import { Pressable, StyleSheet, Text, View } from 'react-native';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import {
   IconArchive,
@@ -45,13 +46,14 @@ const DEMO_STATS = [
 
 export default function HomeScreen() {
   const { user, signOut } = useSession();
+  const insets = useSafeAreaInsets();
   const resource = user?.resource || 'Muruga';
   const warehouse = user?.warehouse || 'WH01';
   const initial = resource.charAt(0).toUpperCase() || 'M';
 
   return (
     <ScreenShell>
-      <View style={styles.header}>
+      <View style={[styles.header, { paddingTop: Math.max(insets.top, 12) }]}>
         <View style={styles.headerText}>
           <Text style={styles.brand}>Warehouse RF</Text>
           <Text style={styles.headerSub}>RF Terminal Client</Text>
@@ -63,8 +65,7 @@ export default function HomeScreen() {
           <Pressable
             accessibilityLabel="Log out"
             onPress={() => {
-              signOut();
-              router.replace('/login' as Href);
+              void signOut().then(() => router.replace('/login' as Href));
             }}
             style={styles.logoutBtn}>
             <IconLogout size={20} color="#FFFFFF" />
@@ -126,7 +127,6 @@ const styles = StyleSheet.create({
   header: {
     backgroundColor: WarehouseColors.navy,
     paddingHorizontal: WarehouseSpacing.lg,
-    paddingTop: 40,
     paddingBottom: 20,
     flexDirection: 'row',
     justifyContent: 'space-between',
@@ -156,7 +156,7 @@ const styles = StyleSheet.create({
   },
   userCard: {
     backgroundColor: WarehouseColors.white,
-    borderRadius: WarehouseRadius.xl,
+    borderRadius: WarehouseRadius.card,
     padding: WarehouseSpacing.lg,
   },
   loggedLabel: { fontSize: 12, color: WarehouseColors.textMuted },
@@ -188,18 +188,19 @@ const styles = StyleSheet.create({
   grid: {
     flexDirection: 'row',
     flexWrap: 'wrap',
-    gap: 10,
+    justifyContent: 'space-between',
+    rowGap: 10,
   },
   moduleCard: {
-    width: '31%',
-    flexGrow: 1,
+    width: '31.5%',
+    maxWidth: '31.5%',
     backgroundColor: WarehouseColors.white,
-    borderRadius: WarehouseRadius.xl,
+    borderRadius: WarehouseRadius.card,
     paddingVertical: 14,
     paddingHorizontal: 4,
     alignItems: 'center',
     gap: 4,
-    minHeight: 110,
+    minHeight: 112,
   },
   moduleIcon: {
     width: 48,
@@ -225,8 +226,9 @@ const styles = StyleSheet.create({
   statsRow: { flexDirection: 'row', gap: 10 },
   statCard: {
     flex: 1,
+    minWidth: 0,
     backgroundColor: WarehouseColors.white,
-    borderRadius: WarehouseRadius.xl,
+    borderRadius: WarehouseRadius.card,
     padding: 12,
     alignItems: 'center',
   },

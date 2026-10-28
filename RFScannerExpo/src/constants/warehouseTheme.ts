@@ -1,9 +1,11 @@
 /**
- * Visual language matched to the original Warehouse RF (Vite) client.
- * Primary: #3b35c4 · Shell: #1a1a22 · Page: #eef0f5 · Text: #1a1a2e
+ * Visual language matched to the Login RF terminal chrome.
+ * Primary: #3b35c4 · Shell: #17182F · Page: #eef0f5 · Text: #1a1a2e
  */
 
 export const WarehouseColors = {
+  /** Outer chrome behind the phone frame (matches Login). */
+  chrome: '#17182F',
   navy: '#1a1a22',
   navyMid: '#2e2e38',
   navySoft: '#3a3a48',
@@ -42,6 +44,11 @@ export const WarehouseRadius = {
   md: 12,
   lg: 16,
   xl: 20,
+  /** Login-aligned card / CTA radius */
+  card: 22,
 } as const;
+
+/** Phone-frame max width — keeps web/desktop preview consistent with Login. */
+export const PhoneMaxWidth = 440;
 
 export const TouchMin = 48;

@@ -1,0 +1,16 @@
+services:
+  postgres:
+    image: postgres:16-alpine
+    container_name: rfscanner-postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: rfscanner
+      POSTGRES_PASSWORD: rfscanner
+      POSTGRES_DB: rfscanner
+    ports:
+      - "5432:5432"
+    volumes:
+      - rfscanner_pg_data:/var/lib/postgresql/data
+
+volumes:
+  rfscanner_pg_data:

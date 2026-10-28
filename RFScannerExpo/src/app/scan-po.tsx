@@ -70,7 +70,7 @@ export default function ScanPurchaseOrderScreen() {
           title={term.scanTitle}
           helper={term.scanHelper}
           expectedHint={DEMO_RECEIVING.purchaseOrder}
-          resetKey={`po-${workflow.failureKind ?? 'ok'}`}
+          resetKey="po-gate"
           fill
           onScanned={onScan}
         />

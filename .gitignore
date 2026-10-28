@@ -22,3 +22,7 @@ logs/
 # beside it.
 /.plugins/
 /.opencode-skills/
+
+# Private credentials
+/RFScannerExpo/credentials.json
+/rfscanner-5ff50e548d5e.json

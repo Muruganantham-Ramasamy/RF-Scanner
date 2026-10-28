@@ -1,6 +1,6 @@
 import { Pressable, StyleSheet, Text, ViewStyle } from 'react-native';
 
-import { WarehouseColors, WarehouseRadius, WarehouseSpacing } from '@/constants/warehouseTheme';
+import { TouchMin, WarehouseColors, WarehouseSpacing } from '@/constants/warehouseTheme';
 
 type Variant = 'primary' | 'secondary' | 'danger' | 'ghost';
 
@@ -40,8 +40,8 @@ export function Button({
 
 const styles = StyleSheet.create({
   base: {
-    minHeight: 48,
-    borderRadius: WarehouseRadius.md,
+    minHeight: TouchMin,
+    borderRadius: 20,
     alignItems: 'center',
     justifyContent: 'center',
     paddingHorizontal: WarehouseSpacing.lg,
@@ -56,6 +56,7 @@ const styles = StyleSheet.create({
   },
   pressed: {
     opacity: 0.88,
+    transform: [{ scale: 0.985 }],
   },
   disabled: {
     opacity: 0.45,

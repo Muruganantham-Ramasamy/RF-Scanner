@@ -23,23 +23,29 @@ In the output, you'll find options to open the app in a
 - [iOS simulator](https://docs.expo.dev/workflow/ios-simulator/)
 - [Expo Go](https://expo.dev/go), a limited sandbox for trying out app development with Expo
 
-You can start developing by editing the files inside the **app** directory. This project uses [file-based routing](https://docs.expo.dev/router/introduction).
+Routes live under `src/app` via [Expo Router](https://docs.expo.dev/router/introduction/). Warehouse RF workflows (picking, receiving, scanner) are the primary product surface.
 
-## Get a fresh project
+### Authentication
 
-When you're ready, run:
+Login requires the Express + PostgreSQL API in `../backend`. See [docs/auth-setup.md](./docs/auth-setup.md).
 
 ```bash
-npm run reset-project
+# backend
+cd ../backend && cp .env.example .env && npm install && npm run migrate && npm run seed:admin && npm run dev
+
+# Expo
+cp .env.example .env   # set EXPO_PUBLIC_API_BASE_URL
+npx expo start
 ```
 
-This command will move the starter code to the **app-example** directory and create a blank **app** directory where you can start developing.
+Admin role value: `admin`. Seed credentials come from `ADMIN_EMAIL` / `ADMIN_PASSWORD` in `backend/.env` (never committed).
 
 ### Other setup steps
 
-- To set up ESLint for linting, run `npx expo lint`, or follow our guide on ["Using ESLint and Prettier"](https://docs.expo.dev/guides/using-eslint/)
-- If you'd like to set up unit testing, follow our guide on ["Unit Testing with Jest"](https://docs.expo.dev/develop/unit-testing/)
-- Learn more about the TypeScript setup in this template in our guide on ["Using TypeScript"](https://docs.expo.dev/guides/typescript/)
+- Lint: `npm run lint`
+- Typecheck: `npx tsc --noEmit`
+- Workflow checks: `npm run verify:workflows`
+- Backend auth tests: `cd ../backend && npm test`
 
 ## Learn more
 

@@ -9,13 +9,13 @@
 
 | Finding | Detail |
 |---|---|
-| HTTP clients | **None** — no `fetch`, axios, or API base URL in the original frontend |
-| Auth | Demo login only (non-empty warehouse / resource / password) — no token exchange |
+| HTTP clients | Expo auth + optional inventory client via `EXPO_PUBLIC_API_BASE_URL` → `../backend` |
+| Auth | Server-backed email/password login (`POST /auth/login`), JWT + SecureStore, role `admin` \| `warehouse_operator` — see `docs/auth-setup.md` |
 | Picking / receiving data | Client demo documents (`DEMO_PICKING_DOCUMENT`, `DEMO_RECEIVING`) |
 | Stats (Open WOs / Picked Today / Pending) | **Hardcoded display values** in HomeScreen (`14` / `38` / `6`) — not live |
 | Activity log | Static demo rows |
 | SAP posting | Explicitly **not** performed; complete screens show demo disclaimers |
-| Expo `EXPO_PUBLIC_API_BASE_URL` | Optional future hook only — unused by original workflows |
+| Expo `EXPO_PUBLIC_API_BASE_URL` | **Required for login** — points at Express auth API |
 
 Legend — Status: `missing` · `partial` · `parity` · `unreachable-in-original` · `intentional-locked`  
 Verification: `unverified` · `logic-tested` · `android-device-required`
@@ -26,7 +26,7 @@ Verification: `unverified` · `logic-tested` · `android-device-required`
 
 | # | Original feature | Original source | Expo route / component | API | Barcode | Status | Verification |
 |---|---|---|---|---|---|---|---|
-| 1 | Login | `LoginScreen` | `app/login.tsx` | Demo only | No | parity | logic-tested |
+| 1 | Login | `LoginScreen` | `app/login.tsx` | `POST /auth/login` | No | parity (auth upgraded) | logic-tested (backend) |
 | 2 | Home dashboard | `HomeScreen` | `app/index.tsx` | Demo stats | No | parity | logic-tested |
 | 3 | Production hub | `production` → `ModuleProcessesScreen` | `app/production.tsx` | None | Downstream | parity | logic-tested |
 | 4 | Inbound hub | `inbound` → `ModuleProcessesScreen` | `app/inbound.tsx` | None | Downstream | parity (+ Receiving entry restored from `ReceivingScreens`) | logic-tested |

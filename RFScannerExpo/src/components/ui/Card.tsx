@@ -10,10 +10,10 @@ export function Card({ children, style }: { children: ReactNode; style?: ViewSty
 const styles = StyleSheet.create({
   card: {
     backgroundColor: WarehouseColors.card,
-    borderRadius: WarehouseRadius.lg,
+    borderRadius: WarehouseRadius.card,
     borderWidth: 1,
     borderColor: WarehouseColors.border,
     padding: WarehouseSpacing.lg,
-    gap: WarehouseSpacing.sm,
+    gap: WarehouseSpacing.md,
   },
 });

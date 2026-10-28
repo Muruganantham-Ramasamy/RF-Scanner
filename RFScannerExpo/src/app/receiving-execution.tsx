@@ -5,7 +5,7 @@ import { StyleSheet, Text, View } from 'react-native';
 import { IconSuccess, IconWarning, StepFieldIcon } from '@/components/icons/AppIcons';
 import { BarcodeScanner, type ScanDisposition } from '@/components/scanner/BarcodeScanner';
 import { BottomNav } from '@/components/shell/BottomNav';
-import { FlexBody, ScreenShell } from '@/components/shell/ScreenShell';
+import { FlexBody, ScreenShell, ScrollBody } from '@/components/shell/ScreenShell';
 import { TopBar } from '@/components/shell/TopBar';
 import { Button } from '@/components/ui/Button';
 import { QuantityEntry } from '@/components/warehouse/QuantityEntry';
@@ -81,10 +81,12 @@ export default function ReceivingExecutionScreen() {
     return false;
   }
 
+  const Body = isQuantity && !showFlash ? ScrollBody : FlexBody;
+
   return (
     <ScreenShell>
       <TopBar title="Receiving by PO" subtitle={term.scanTitle} showBack />
-      <FlexBody>
+      <Body>
         <StepProgress steps={progressSteps} />
 
         {showFlash && justVerified ? (
@@ -153,7 +155,7 @@ export default function ReceivingExecutionScreen() {
         )}
 
         <Text style={styles.demo}>Demo / mock receiving — no SAP Goods Receipt posting</Text>
-      </FlexBody>
+      </Body>
       <BottomNav active="scan" />
     </ScreenShell>
   );

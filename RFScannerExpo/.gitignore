@@ -31,7 +31,13 @@ yarn-error.*
 *.pem
 
 # local env files
+.env
 .env*.local
+
+# Google Play / FCM service account keys (never commit)
+*service-account*.json
+google-service-account*.json
+secrets/
 
 # typescript
 *.tsbuildinfo

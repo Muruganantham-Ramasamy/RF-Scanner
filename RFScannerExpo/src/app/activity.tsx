@@ -1,4 +1,5 @@
 import { StyleSheet, Text, View } from 'react-native';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { IconActivity } from '@/components/icons/AppIcons';
 import { BottomNav } from '@/components/shell/BottomNav';
@@ -16,11 +17,12 @@ const ACTIVITIES = [
 
 export default function ActivityScreen() {
   const { user } = useSession();
+  const insets = useSafeAreaInsets();
   const initial = (user?.resource || 'Muruga').charAt(0).toUpperCase();
 
   return (
     <ScreenShell>
-      <View style={styles.header}>
+      <View style={[styles.header, { paddingTop: Math.max(insets.top, 12) }]}>
         <View style={{ flex: 1 }}>
           <Text style={styles.title}>Activity Log</Text>
           <Text style={styles.sub}>Recent warehouse operations</Text>
@@ -72,7 +74,6 @@ const styles = StyleSheet.create({
   header: {
     backgroundColor: WarehouseColors.navy,
     paddingHorizontal: WarehouseSpacing.lg,
-    paddingTop: 40,
     paddingBottom: 20,
     flexDirection: 'row',
     alignItems: 'center',
